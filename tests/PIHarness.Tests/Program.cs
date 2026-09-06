@@ -3,6 +3,8 @@
 
 using System.Reflection;
 using System.Diagnostics;
+using System.Text.Json;
+using PIHarness.Core.Rpc;
 using PIHarness.Core.Sessions;
 
 namespace PIHarness.Tests;
@@ -11,6 +13,11 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        if (args.Contains("--fake-rpc", StringComparer.Ordinal))
+        {
+            return await RunFakeRpcAsync().ConfigureAwait(false);
+        }
+
         TestContext.Arguments = args;
         var testMethods = Assembly.GetExecutingAssembly()
             .GetTypes()
@@ -68,8 +75,83 @@ internal static class Program
             }
         }
 
+        if (args.Contains("--live-pi-probe", StringComparer.Ordinal))
+        {
+            try
+            {
+                await using var client = new PiRpcClient();
+                client.DiagnosticReceived += (_, text) => Console.WriteLine($"[pi 诊断] {text}");
+                await client.StartAsync(
+                    new PiStartOptions(Environment.CurrentDirectory, NoSession: true, Offline: true),
+                    CancellationToken.None).ConfigureAwait(false);
+                var response = await client.RequestAsync(
+                    "get_state",
+                    null,
+                    TimeSpan.FromSeconds(20),
+                    CancellationToken.None).ConfigureAwait(false);
+                var data = response.GetProperty("data");
+                var sessionId = data.GetProperty("sessionId").GetString();
+                var model = data.TryGetProperty("model", out var modelElement) && modelElement.ValueKind == JsonValueKind.Object
+                    ? modelElement.GetProperty("id").GetString()
+                    : "未配置";
+                Console.WriteLine($"[实机只读] pi RPC get_state 成功，会话 {sessionId}，模型 {model}");
+            }
+            catch (Exception exception)
+            {
+                nFailed++;
+                Console.WriteLine($"[实机失败] pi RPC 只读探测：{exception.Message}");
+            }
+        }
+
         Console.WriteLine($"测试完成：总计 {testMethods.Length}，通过 {testMethods.Length - nFailed}，失败 {nFailed}");
         return nFailed == 0 ? 0 : 1;
+    }
+
+    private static async Task<int> RunFakeRpcAsync()
+    {
+        var receivedCommands = new List<string>();
+        Console.Out.WriteLine("[dashboard] fake non-json startup log");
+        Console.Out.Flush();
+
+        while (await Console.In.ReadLineAsync().ConfigureAwait(false) is { } line)
+        {
+            using var document = JsonDocument.Parse(line);
+            var root = document.RootElement;
+            var id = root.GetProperty("id").GetString();
+            var command = root.GetProperty("type").GetString() ?? string.Empty;
+            receivedCommands.Add(command);
+
+            if (command == "never")
+            {
+                continue;
+            }
+
+            if (command == "exit")
+            {
+                return 7;
+            }
+
+            object response = command switch
+            {
+                "get_state" => new { id, type = "response", command, success = true, data = new { isStreaming = false, sessionId = "fake-session" } },
+                "clear_queue" => new { id, type = "response", command, success = true, data = new { steering = Array.Empty<string>(), followUp = Array.Empty<string>() } },
+                _ => new { id, type = "response", command, success = true, data = new { } },
+            };
+            Console.Out.WriteLine(JsonSerializer.Serialize(response));
+
+            if (command == "abort")
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new
+                {
+                    type = "test_command_order",
+                    commands = receivedCommands.ToArray(),
+                }));
+            }
+
+            Console.Out.Flush();
+        }
+
+        return 0;
     }
 
     private static string? ReadOption(IReadOnlyList<string> args, string option)
