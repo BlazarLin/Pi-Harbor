@@ -18,6 +18,7 @@
         Closing="OnClosing">
     <Window.Resources>
         <p:ChatMessageTemplateSelector x:Key="MessageTemplateSelector" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <DataTemplate x:Key="UserMessageTemplate">
             <Grid Margin="70,8,18,8">
@@ -42,7 +43,7 @@
 
         <DataTemplate x:Key="ThinkingMessageTemplate">
             <Expander Margin="18,4,70,4" Foreground="{StaticResource SecondaryTextBrush}"
-                      Header="思考过程" IsExpanded="False">
+                      Header="思考过程" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,0"
                         Margin="0,6,0,0" Padding="10,4">
                     <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
@@ -54,7 +55,7 @@
 
         <DataTemplate x:Key="ToolMessageTemplate">
             <Expander Margin="18,4,70,4" Foreground="{StaticResource SecondaryTextBrush}"
-                      Header="{Binding Title}" IsExpanded="False">
+                      Header="{Binding Title}" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                 <Border Background="{StaticResource PanelBrush}" CornerRadius="6"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                         Margin="0,6,0,0" Padding="10,7">
@@ -211,11 +212,19 @@
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,12">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{Binding CurrentTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding CurrentCwd}" Foreground="{StaticResource SecondaryTextBrush}"
-                               FontSize="12" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentCwd}" />
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding CurrentTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding CurrentCwd}" Foreground="{StaticResource SecondaryTextBrush}"
+                                   FontSize="12" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentCwd}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding MessageCountText}" Margin="16,0,0,0"
+                               Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                </Grid>
             </Border>
 
             <Grid Grid.Row="1">
@@ -240,9 +249,13 @@
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          ScrollViewer.CanContentScroll="True"
                          VirtualizingStackPanel.IsVirtualizing="True"
-                         VirtualizingStackPanel.VirtualizationMode="Recycling"
+                         VirtualizingStackPanel.VirtualizationMode="Standard"
+                         VirtualizingPanel.CacheLength="1"
+                         VirtualizingPanel.CacheLengthUnit="Page"
                          VirtualizingPanel.ScrollUnit="Pixel"
-                         SelectionMode="Single" ScrollViewer.ScrollChanged="OnMessageScrollChanged">
+                         SelectionMode="Single"
+                         PreviewMouseWheel="OnMessagePreviewMouseWheel"
+                         ScrollViewer.ScrollChanged="OnMessageScrollChanged">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -261,6 +274,24 @@
                         </Style>
                     </ListBox.ItemContainerStyle>
                 </ListBox>
+
+                <Border Background="#CC171717"
+                        Visibility="{Binding IsLoadingHistory, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="正在读取会话…" FontSize="15" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="大会话会按需渲染，请稍候" Margin="0,7,0,0"
+                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Button x:Name="ReturnToLatestButton" Content="↓  回到最新"
+                        Click="OnReturnToLatestClick" Visibility="Collapsed"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="0,0,22,18" Padding="14,8"
+                        Foreground="{StaticResource PrimaryTextBrush}"
+                        Background="#E63A3840" BorderBrush="#66616A" BorderThickness="1"
+                        Cursor="Hand" />
             </Grid>
 
             <Border Grid.Row="2" Margin="18,10,18,18" Background="{StaticResource PanelBrush}"
@@ -281,7 +312,8 @@
                         </TextBox.InputBindings>
                     </TextBox>
                     <Button Grid.Column="1" Content="停止" Command="{Binding StopCommand}"
-                            Style="{StaticResource FlatButtonStyle}" Margin="6,1" VerticalAlignment="Bottom" />
+                            Style="{StaticResource FlatButtonStyle}" Margin="6,1" VerticalAlignment="Bottom"
+                            Visibility="{Binding IsStreaming, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Grid.Column="2" Content="发送" Command="{Binding SendCommand}"
                             Style="{StaticResource FlatButtonStyle}" Background="{StaticResource AccentBrush}"
                             Margin="3,1" VerticalAlignment="Bottom" HorizontalContentAlignment="Center" />

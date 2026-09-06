@@ -38,6 +38,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _statusText = "就绪";
     private string? _selectedSessionPath;
     private ChatSessionState _state = ChatSessionState.Idle;
+    private bool _isLoadingHistory;
     private bool _disposed;
     private bool _shuttingDown;
 
@@ -52,6 +53,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshCommand = new AsyncRelayCommand(RefreshCatalogAsync, () => State is not ChatSessionState.Starting);
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
         StopCommand = new AsyncRelayCommand(StopAsync, () => State == ChatSessionState.Streaming);
+        Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(MessageCountText));
     }
 
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
@@ -136,6 +138,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public bool CanSend => State == ChatSessionState.Ready && !string.IsNullOrWhiteSpace(InputText);
     public bool CanSwitchSession => State is ChatSessionState.Idle or ChatSessionState.Ready or ChatSessionState.Faulted;
     public bool IsStreaming => State is ChatSessionState.Streaming or ChatSessionState.Stopping;
+    public string MessageCountText => Messages.Count == 0 ? "尚无消息" : $"{Messages.Count} 项";
+
+    public bool IsLoadingHistory
+    {
+        get => _isLoadingHistory;
+        private set => SetProperty(ref _isLoadingHistory, value);
+    }
 
     public async Task InitializeAsync()
     {
@@ -189,6 +198,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             CurrentCwd = Path.GetFullPath(cwd);
             SelectedSessionPath = null;
             ModelText = string.Empty;
+            IsLoadingHistory = false;
         }).ConfigureAwait(false);
         await StartRpcAsync(new PiStartOptions(Path.GetFullPath(cwd))).ConfigureAwait(false);
     }
@@ -216,6 +226,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             CurrentCwd = session.Cwd;
             SelectedSessionPath = session.SessionPath;
             ModelText = string.Empty;
+            IsLoadingHistory = true;
         }).ConfigureAwait(false);
         var historyTask = SessionHistoryReader.ReadAsync(session.SessionPath, CancellationToken.None);
         await StartRpcAsync(new PiStartOptions(session.Cwd, session.SessionPath), historyTask).ConfigureAwait(false);
@@ -326,6 +337,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception exception) when (exception is PiRpcException or IOException or UnauthorizedAccessException)
         {
+            await RunOnUiAsync(() => IsLoadingHistory = false).ConfigureAwait(false);
             await ShowErrorAsync($"打开 pi 会话失败：{exception.Message}").ConfigureAwait(false);
         }
     }
@@ -377,6 +389,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await RunOnUiAsync(() => Messages.ReplaceAll(
                 [new ChatItemViewModel(ChatItemKind.Error, $"读取本地历史失败：{exception.Message}")])).ConfigureAwait(false);
+        }
+        finally
+        {
+            await RunOnUiAsync(() => IsLoadingHistory = false).ConfigureAwait(false);
         }
     }
 
@@ -749,6 +765,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private bool _isError;
     private bool _isCompleted;
     private bool _isStreaming;
+    private bool _isExpanded;
 
     public ChatItemViewModel(ChatItemKind kind, string text)
     {
@@ -792,6 +809,12 @@ public sealed class ChatItemViewModel : ObservableObject
     {
         get => _isStreaming;
         set => SetProperty(ref _isStreaming, value);
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
     }
 
     public void Append(string text)

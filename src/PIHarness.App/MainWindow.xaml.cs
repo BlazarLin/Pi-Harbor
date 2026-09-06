@@ -8,11 +8,13 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using PIHarness.App.ViewModels;
+using PIHarness.App.Presentation;
 using PIHarness.Core.Sessions;
 
 namespace PIHarness.App;
@@ -21,8 +23,8 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
     private readonly HashSet<ChatItemViewModel> _subscribedMessages = [];
+    private readonly ChatScrollCoordinator _scrollCoordinator = new(80);
     private DispatcherOperation? _pendingScrollOperation;
-    private bool _stickToBottom = true;
     private bool _shutdownComplete;
 
     public MainWindow()
@@ -118,7 +120,8 @@ public partial class MainWindow : Window
             }
 
             _subscribedMessages.Clear();
-            _stickToBottom = true;
+            _scrollCoordinator.Reset();
+            UpdateReturnToLatestVisibility();
         }
 
         if (args.NewItems is not null)
@@ -154,17 +157,39 @@ public partial class MainWindow : Window
     {
         if (args.ExtentHeightChange == 0)
         {
-            _stickToBottom = args.ExtentHeight - args.VerticalOffset - args.ViewportHeight < 80;
+            var distanceFromBottom = Math.Max(0, args.ExtentHeight - args.VerticalOffset - args.ViewportHeight);
+            _scrollCoordinator.OnViewportPositionChanged(distanceFromBottom);
+            UpdateReturnToLatestVisibility();
         }
-        else if (_stickToBottom)
+        else if (_scrollCoordinator.ShouldFollowExtentChange)
         {
             ScrollToBottomIfNeeded();
         }
     }
 
+    private void OnMessagePreviewMouseWheel(object sender, MouseWheelEventArgs args)
+    {
+        _scrollCoordinator.OnUserWheel(args.Delta);
+        UpdateReturnToLatestVisibility();
+    }
+
+    private void OnReturnToLatestClick(object sender, RoutedEventArgs args)
+    {
+        _scrollCoordinator.ReturnToLatest();
+        UpdateReturnToLatestVisibility();
+        ScrollToBottomIfNeeded();
+    }
+
+    private void UpdateReturnToLatestVisibility()
+    {
+        ReturnToLatestButton.Visibility = _scrollCoordinator.IsFollowingLatest
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
     private void ScrollToBottomIfNeeded()
     {
-        if (!_stickToBottom || _viewModel.Messages.Count == 0)
+        if (!_scrollCoordinator.IsFollowingLatest || _viewModel.Messages.Count == 0)
         {
             return;
         }
@@ -177,7 +202,7 @@ public partial class MainWindow : Window
         _pendingScrollOperation = Dispatcher.BeginInvoke(() =>
         {
             _pendingScrollOperation = null;
-            if (_stickToBottom && _viewModel.Messages.Count > 0)
+            if (_scrollCoordinator.IsFollowingLatest && _viewModel.Messages.Count > 0)
             {
                 MessageList.ScrollIntoView(_viewModel.Messages[^1]);
             }
