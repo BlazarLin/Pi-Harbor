@@ -241,6 +241,7 @@
                          ScrollViewer.CanContentScroll="True"
                          VirtualizingStackPanel.IsVirtualizing="True"
                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
                          SelectionMode="Single" ScrollViewer.ScrollChanged="OnMessageScrollChanged">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">

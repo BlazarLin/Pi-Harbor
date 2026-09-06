@@ -3,6 +3,7 @@
 
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using PIHarness.Core.Models;
 using PIHarness.Core.Rpc;
@@ -54,7 +55,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
-    public ObservableCollection<ChatItemViewModel> Messages { get; } = [];
+    public BulkObservableCollection<ChatItemViewModel> Messages { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand SendCommand { get; }
@@ -216,7 +217,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SelectedSessionPath = session.SessionPath;
             ModelText = string.Empty;
         }).ConfigureAwait(false);
-        await StartRpcAsync(new PiStartOptions(session.Cwd, session.SessionPath)).ConfigureAwait(false);
+        var historyTask = SessionHistoryReader.ReadAsync(session.SessionPath, CancellationToken.None);
+        await StartRpcAsync(new PiStartOptions(session.Cwd, session.SessionPath), historyTask).ConfigureAwait(false);
     }
 
     public async Task SendAsync()
@@ -292,7 +294,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _catalogRefreshLock.Dispose();
     }
 
-    private async Task StartRpcAsync(PiStartOptions options)
+    private async Task StartRpcAsync(
+        PiStartOptions options,
+        Task<SessionHistorySnapshot>? historyTask = null)
     {
         await RunOnUiAsync(() => State = ChatSessionState.Starting).ConfigureAwait(false);
         var client = _rpcClientFactory();
@@ -303,12 +307,20 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await client.StartAsync(options, CancellationToken.None).ConfigureAwait(false);
-            var stateResponse = await client.RequestAsync("get_state", CancellationToken.None).ConfigureAwait(false);
-            var messagesResponse = await client.RequestAsync("get_messages", CancellationToken.None).ConfigureAwait(false);
+            var stateTask = client.RequestAsync(
+                "get_state",
+                null,
+                TimeSpan.FromMinutes(2),
+                CancellationToken.None);
+            if (historyTask is not null)
+            {
+                await ApplyLocalHistoryAsync(historyTask).ConfigureAwait(false);
+            }
+
+            var stateResponse = await stateTask.ConfigureAwait(false);
             await RunOnUiAsync(() =>
             {
                 ApplyStateResponse(stateResponse);
-                ApplyHistoryResponse(messagesResponse);
                 State = ChatSessionState.Ready;
             }).ConfigureAwait(false);
         }
@@ -353,22 +365,29 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void ApplyHistoryResponse(JsonElement response)
+    private async Task ApplyLocalHistoryAsync(Task<SessionHistorySnapshot> historyTask)
     {
-        if (!response.TryGetProperty("data", out var data) ||
-            !data.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
+        try
         {
-            return;
+            var snapshot = await historyTask.ConfigureAwait(false);
+            var items = snapshot.Items.Select(CreateHistoryViewModel).ToArray();
+            await RunOnUiAsync(() => Messages.ReplaceAll(items)).ConfigureAwait(false);
         }
-
-        foreach (var message in messages.EnumerateArray())
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
         {
-            foreach (var item in MapMessage(message))
-            {
-                Messages.Add(item);
-            }
+            await RunOnUiAsync(() => Messages.ReplaceAll(
+                [new ChatItemViewModel(ChatItemKind.Error, $"读取本地历史失败：{exception.Message}")])).ConfigureAwait(false);
         }
     }
+
+    private static ChatItemViewModel CreateHistoryViewModel(SessionHistoryItem item) =>
+        new(item.Kind, item.Text)
+        {
+            Title = item.Title,
+            Key = item.Key,
+            IsError = item.IsError,
+            IsCompleted = item.Kind == ChatItemKind.Tool,
+        };
 
     private void OnRpcEventReceived(object? sender, PiRpcEvent rpcEvent)
     {
@@ -568,66 +587,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _streamItems[nContentIndex] = item;
         Messages.Add(item);
         return item;
-    }
-
-    private static IEnumerable<ChatItemViewModel> MapMessage(JsonElement message)
-    {
-        var role = ReadString(message, "role");
-        switch (role)
-        {
-            case "user":
-                yield return new ChatItemViewModel(ChatItemKind.User, ReadContentText(message));
-                yield break;
-            case "assistant":
-                if (message.TryGetProperty("content", out var assistantContent) && assistantContent.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var part in assistantContent.EnumerateArray())
-                    {
-                        var type = ReadString(part, "type");
-                        if (type == "text")
-                        {
-                            yield return new ChatItemViewModel(ChatItemKind.Assistant, ReadString(part, "text"));
-                        }
-                        else if (type == "thinking")
-                        {
-                            yield return new ChatItemViewModel(ChatItemKind.Thinking, ReadString(part, "thinking"));
-                        }
-                        else if (type == "toolCall")
-                        {
-                            yield return new ChatItemViewModel(ChatItemKind.Tool, part.TryGetProperty("arguments", out var args) ? args.ToString() : string.Empty)
-                            {
-                                Title = $"工具：{ReadString(part, "name")}",
-                                Key = ReadString(part, "id"),
-                            };
-                        }
-                    }
-                }
-                yield break;
-            case "toolResult":
-                yield return new ChatItemViewModel(ChatItemKind.Tool, ReadContentText(message))
-                {
-                    Title = $"工具结果：{ReadString(message, "toolName")}",
-                    Key = ReadString(message, "toolCallId"),
-                    IsError = message.TryGetProperty("isError", out var error) && error.ValueKind == JsonValueKind.True,
-                };
-                yield break;
-            case "bashExecution":
-                yield return new ChatItemViewModel(ChatItemKind.Tool, ReadString(message, "output"))
-                {
-                    Title = $"命令：{ReadString(message, "command")}",
-                };
-                yield break;
-            case "custom":
-                if (!message.TryGetProperty("display", out var display) || display.ValueKind != JsonValueKind.False)
-                {
-                    yield return new ChatItemViewModel(ChatItemKind.System, ReadContentText(message));
-                }
-                yield break;
-            case "branchSummary":
-            case "compactionSummary":
-                yield return new ChatItemViewModel(ChatItemKind.System, ReadString(message, "summary"));
-                yield break;
-        }
     }
 
     private static string ReadContentText(JsonElement container)

@@ -136,6 +136,18 @@ internal static class Program
             var id = root.GetProperty("id").GetString();
             var command = root.GetProperty("type").GetString() ?? string.Empty;
             receivedCommands.Add(command);
+            var commandLog = Environment.GetEnvironmentVariable("PI_HARNESS_FAKE_COMMAND_LOG");
+            if (!string.IsNullOrWhiteSpace(commandLog))
+            {
+                await File.AppendAllTextAsync(commandLog, command + Environment.NewLine).ConfigureAwait(false);
+            }
+
+            if (command == "get_state" &&
+                int.TryParse(Environment.GetEnvironmentVariable("PI_HARNESS_FAKE_STATE_DELAY_MS"), out var nStateDelayMs) &&
+                nStateDelayMs > 0)
+            {
+                await Task.Delay(nStateDelayMs).ConfigureAwait(false);
+            }
 
             if (command == "never")
             {

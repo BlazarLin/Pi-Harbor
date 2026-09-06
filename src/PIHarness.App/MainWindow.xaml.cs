@@ -20,6 +20,8 @@ namespace PIHarness.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
+    private readonly HashSet<ChatItemViewModel> _subscribedMessages = [];
+    private DispatcherOperation? _pendingScrollOperation;
     private bool _stickToBottom = true;
     private bool _shutdownComplete;
 
@@ -108,11 +110,23 @@ public partial class MainWindow : Window
 
     private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs args)
     {
+        if (args.Action == NotifyCollectionChangedAction.Reset)
+        {
+            foreach (var item in _subscribedMessages)
+            {
+                item.PropertyChanged -= OnMessagePropertyChanged;
+            }
+
+            _subscribedMessages.Clear();
+            _stickToBottom = true;
+        }
+
         if (args.NewItems is not null)
         {
             foreach (ChatItemViewModel item in args.NewItems)
             {
                 item.PropertyChanged += OnMessagePropertyChanged;
+                _subscribedMessages.Add(item);
             }
         }
 
@@ -121,6 +135,7 @@ public partial class MainWindow : Window
             foreach (ChatItemViewModel item in args.OldItems)
             {
                 item.PropertyChanged -= OnMessagePropertyChanged;
+                _subscribedMessages.Remove(item);
             }
         }
 
@@ -154,9 +169,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        Dispatcher.BeginInvoke(
-            () => MessageList.ScrollIntoView(_viewModel.Messages[^1]),
-            DispatcherPriority.Background);
+        if (_pendingScrollOperation is { Status: DispatcherOperationStatus.Pending or DispatcherOperationStatus.Executing })
+        {
+            return;
+        }
+
+        _pendingScrollOperation = Dispatcher.BeginInvoke(() =>
+        {
+            _pendingScrollOperation = null;
+            if (_stickToBottom && _viewModel.Messages.Count > 0)
+            {
+                MessageList.ScrollIntoView(_viewModel.Messages[^1]);
+            }
+        }, DispatcherPriority.Background);
     }
 
     private void EnableDarkTitleBar()

@@ -14,12 +14,32 @@ internal static class MainViewModelTests
     public static async Task LoadsExistingMessagesAsync()
     {
         using var directory = new TemporaryDirectory();
+        var sessionPath = WriteConversationSession(directory, "history.jsonl");
         await using var viewModel = CreateViewModel(directory.Path, out _);
 
-        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "历史会话"));
+        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "历史会话", sessionPath));
 
         AssertEx.True(viewModel.Messages.Any(item => item.Kind == ChatItemKind.User && item.Text == "历史问题"), "应显示历史用户消息");
         AssertEx.True(viewModel.Messages.Any(item => item.Kind == ChatItemKind.Assistant && item.Text == "历史回答"), "应显示历史助手消息");
+    }
+
+    [TestCase("TEST-16B", "本地历史先显示且打开会话不请求巨型 get_messages")]
+    public static async Task ShowsLocalHistoryBeforePiIsReadyAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var sessionPath = WriteConversationSession(directory, "local-first.jsonl");
+        var commandLog = Path.Combine(directory.Path, "rpc-commands.log");
+        await using var viewModel = CreateViewModel(directory.Path, out _, commandLog, 800);
+
+        var openTask = viewModel.OpenSessionAsync(CreateSummary(directory.Path, "本地优先", sessionPath));
+        await Task.Delay(250);
+
+        AssertEx.True(viewModel.Messages.Any(item => item.Text == "历史回答"), "pi 尚未就绪时应先显示本地历史");
+        AssertEx.Equal(ChatSessionState.Starting, viewModel.State, "pi 后台初始化期间应保持 Starting");
+
+        await openTask;
+        var commands = File.Exists(commandLog) ? await File.ReadAllLinesAsync(commandLog) : [];
+        AssertEx.False(commands.Contains("get_messages", StringComparer.Ordinal), "已有会话不得复制完整 get_messages 响应");
     }
 
     [TestCase("TEST-08", "助手增量文本归并到同一条消息")]
@@ -96,19 +116,23 @@ internal static class MainViewModelTests
         AssertEx.True(clients[1].IsRunning, "新客户端应保持运行");
     }
 
-    private static MainViewModel CreateViewModel(string sessionRoot, out List<PiRpcClient> clients)
+    private static MainViewModel CreateViewModel(
+        string sessionRoot,
+        out List<PiRpcClient> clients,
+        string? commandLog = null,
+        int nStateDelayMs = 0)
     {
         clients = [];
         var capturedClients = clients;
         return new MainViewModel(sessionRoot, () =>
         {
-            var client = new PiRpcClient(CreateFakeStartInfo);
+            var client = new PiRpcClient(options => CreateFakeStartInfo(options, commandLog, nStateDelayMs));
             capturedClients.Add(client);
             return client;
         });
     }
 
-    private static ProcessStartInfo CreateFakeStartInfo(PiStartOptions options)
+    private static ProcessStartInfo CreateFakeStartInfo(PiStartOptions options, string? commandLog, int nStateDelayMs)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -121,11 +145,30 @@ internal static class MainViewModelTests
             RedirectStandardError = true,
         };
         startInfo.ArgumentList.Add("--fake-rpc");
+        if (!string.IsNullOrWhiteSpace(commandLog))
+        {
+            startInfo.Environment["PI_HARNESS_FAKE_COMMAND_LOG"] = commandLog;
+        }
+        if (nStateDelayMs > 0)
+        {
+            startInfo.Environment["PI_HARNESS_FAKE_STATE_DELAY_MS"] = nStateDelayMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         return startInfo;
     }
 
-    private static SessionSummary CreateSummary(string directory, string title) =>
-        new(Path.Combine(directory, $"{Guid.NewGuid():N}.jsonl"), directory, title, DateTimeOffset.Now, DateTimeOffset.Now);
+    private static SessionSummary CreateSummary(string directory, string title, string? sessionPath = null) =>
+        new(sessionPath ?? Path.Combine(directory, $"{Guid.NewGuid():N}.jsonl"), directory, title, DateTimeOffset.Now, DateTimeOffset.Now);
+
+    private static string WriteConversationSession(TemporaryDirectory directory, string fileName)
+    {
+        return directory.WriteSession(
+            fileName,
+            """
+            {"type":"session","version":3,"id":"session-history","timestamp":"2026-09-06T00:00:00Z","cwd":"G:\\Code\\PI-Harness"}
+            {"type":"message","id":"history-user","parentId":null,"timestamp":"2026-09-06T00:00:01Z","message":{"role":"user","content":"历史问题"}}
+            {"type":"message","id":"history-answer","parentId":"history-user","timestamp":"2026-09-06T00:00:02Z","message":{"role":"assistant","content":[{"type":"text","text":"历史回答"}]}}
+            """);
+    }
 
     private static void WriteSession(TemporaryDirectory directory, string fileName, string cwd, string title)
     {
