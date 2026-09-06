@@ -1,0 +1,34 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 18.0.0.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PIHarness.Core", "src\PIHarness.Core\PIHarness.Core.csproj", "{07E6B3E5-02A5-4E71-B02E-6BAA53E434F8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PIHarness.App", "src\PIHarness.App\PIHarness.App.csproj", "{C7B23D40-69AD-43C4-B78C-01AFCFE1371B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PIHarness.Tests", "tests\PIHarness.Tests\PIHarness.Tests.csproj", "{CF869124-C923-4552-9683-41414BC380CD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{07E6B3E5-02A5-4E71-B02E-6BAA53E434F8}.Debug|x64.ActiveCfg = Debug|x64
+		{07E6B3E5-02A5-4E71-B02E-6BAA53E434F8}.Debug|x64.Build.0 = Debug|x64
+		{07E6B3E5-02A5-4E71-B02E-6BAA53E434F8}.Release|x64.ActiveCfg = Release|x64
+		{07E6B3E5-02A5-4E71-B02E-6BAA53E434F8}.Release|x64.Build.0 = Release|x64
+		{C7B23D40-69AD-43C4-B78C-01AFCFE1371B}.Debug|x64.ActiveCfg = Debug|x64
+		{C7B23D40-69AD-43C4-B78C-01AFCFE1371B}.Debug|x64.Build.0 = Debug|x64
+		{C7B23D40-69AD-43C4-B78C-01AFCFE1371B}.Release|x64.ActiveCfg = Release|x64
+		{C7B23D40-69AD-43C4-B78C-01AFCFE1371B}.Release|x64.Build.0 = Release|x64
+		{CF869124-C923-4552-9683-41414BC380CD}.Debug|x64.ActiveCfg = Debug|x64
+		{CF869124-C923-4552-9683-41414BC380CD}.Debug|x64.Build.0 = Debug|x64
+		{CF869124-C923-4552-9683-41414BC380CD}.Release|x64.ActiveCfg = Release|x64
+		{CF869124-C923-4552-9683-41414BC380CD}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

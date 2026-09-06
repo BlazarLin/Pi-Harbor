@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PIHarness.Core</AssemblyName>
+    <RootNamespace>PIHarness.Core</RootNamespace>
+  </PropertyGroup>
+</Project>
