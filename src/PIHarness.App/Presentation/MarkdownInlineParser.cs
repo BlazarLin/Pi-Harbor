@@ -13,15 +13,24 @@ public sealed class MarkdownTextBlock : StackPanel
 {
     public static readonly DependencyProperty ForegroundProperty = TextElement.ForegroundProperty.AddOwner(
         typeof(MarkdownTextBlock),
-        new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.Inherits));
+        new FrameworkPropertyMetadata(
+            Brushes.White,
+            FrameworkPropertyMetadataOptions.Inherits,
+            OnPresentationPropertyChanged));
 
     public static readonly DependencyProperty FontFamilyProperty = TextElement.FontFamilyProperty.AddOwner(
         typeof(MarkdownTextBlock),
-        new FrameworkPropertyMetadata(new FontFamily("Segoe UI"), FrameworkPropertyMetadataOptions.Inherits));
+        new FrameworkPropertyMetadata(
+            new FontFamily("Segoe UI"),
+            FrameworkPropertyMetadataOptions.Inherits,
+            OnPresentationPropertyChanged));
 
     public static readonly DependencyProperty FontSizeProperty = TextElement.FontSizeProperty.AddOwner(
         typeof(MarkdownTextBlock),
-        new FrameworkPropertyMetadata(14.0, FrameworkPropertyMetadataOptions.Inherits));
+        new FrameworkPropertyMetadata(
+            14.0,
+            FrameworkPropertyMetadataOptions.Inherits,
+            OnPresentationPropertyChanged));
 
     public static readonly DependencyProperty MarkdownProperty = DependencyProperty.Register(
         nameof(Markdown),
@@ -89,6 +98,15 @@ public sealed class MarkdownTextBlock : StackPanel
             control._renderTimer.Start();
         }
         else
+        {
+            control.RenderMarkdown();
+        }
+    }
+
+    private static void OnPresentationPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+    {
+        var control = (MarkdownTextBlock)dependencyObject;
+        if (!control.IsStreaming)
         {
             control.RenderMarkdown();
         }

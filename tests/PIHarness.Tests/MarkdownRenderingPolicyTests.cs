@@ -3,6 +3,8 @@
 // Purpose: Prevent delayed history layout from moving the reading viewport.
 
 using PIHarness.App.Presentation;
+using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace PIHarness.Tests;
 
@@ -28,6 +30,19 @@ internal static class MarkdownRenderingPolicyTests
 
             block.IsStreaming = false;
             AssertEx.True(block.Children.Count > 0, "流式结束时必须立即生成最终布局");
+        });
+    }
+
+    [TestCase("TEST-19C", "同步 Markdown 在主题颜色绑定后立即更新前景色")]
+    public static void ThemeChangesRefreshRenderedMarkdown()
+    {
+        RunInSta(() =>
+        {
+            var block = new MarkdownTextBlock { Markdown = "主题正文" };
+            block.Foreground = Brushes.Orange;
+
+            var text = block.Children.OfType<TextBlock>().Single();
+            AssertEx.Equal(Brushes.Orange, text.Foreground, "Markdown 子文本不得固化为 XAML 绑定前的默认颜色");
         });
     }
 

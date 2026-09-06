@@ -281,21 +281,29 @@ public partial class MainWindow : Window
         var downTwoTarget = Math.Min(scrollViewer.ScrollableHeight, upFour.VerticalOffset + scrollViewer.ViewportHeight * 2);
         var downTwo = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "04-down-two-pages", downTwoTarget);
 
-        var steps = new[] { bottom, upOne, upFour, downTwo };
+        var bReadingIntentPassed = !_scrollCoordinator.IsFollowingLatest &&
+                                   ReturnToLatestButton.Visibility == Visibility.Visible;
+        OnReturnToLatestClick(ReturnToLatestButton, new RoutedEventArgs());
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        var returned = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "05-return-to-latest", null);
+
+        var steps = new[] { bottom, upOne, upFour, downTwo, returned };
         var bDirectionPassed = bottom.VerticalOffset > upOne.VerticalOffset &&
                                upOne.VerticalOffset > upFour.VerticalOffset &&
                                downTwo.VerticalOffset > upFour.VerticalOffset;
         var bStablePassed = steps.All(step => step.StableFrames);
         var bResponsivePassed = steps.All(step => step.StepElapsedMilliseconds < 3000);
-        var bReadingIntentPassed = !_scrollCoordinator.IsFollowingLatest &&
-                                   ReturnToLatestButton.Visibility == Visibility.Visible;
-        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed;
+        var bReturnPassed = _scrollCoordinator.IsFollowingLatest &&
+                            ReturnToLatestButton.Visibility == Visibility.Collapsed &&
+                            scrollViewer.ScrollableHeight - returned.VerticalOffset <= 1;
+        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed && bReturnPassed;
 
         var report = new StringBuilder();
         report.AppendLine($"[{(bDirectionPassed ? "通过" : "失败")}] TEST-UI-01：上下滚动方向与目标偏移一致");
         report.AppendLine($"[{(bStablePassed ? "通过" : "失败")}] TEST-UI-02：每个阅读位置静置双帧完全一致");
         report.AppendLine($"[{(bResponsivePassed ? "通过" : "失败")}] TEST-UI-03：每次滚动、布局与双帧捕获均小于 3000 ms");
         report.AppendLine($"[{(bReadingIntentPassed ? "通过" : "失败")}] TEST-UI-04：离开底部后保持历史阅读并显示回到最新入口");
+        report.AppendLine($"[{(bReturnPassed ? "通过" : "失败")}] TEST-UI-05：点击回到最新后准确到底并恢复自动跟随");
         report.AppendLine($"会话显示项：{_viewModel.Messages.Count}；视口高度：{scrollViewer.ViewportHeight:F1}；可滚动高度：{scrollViewer.ScrollableHeight:F1}");
         foreach (var step in steps)
         {
@@ -315,10 +323,13 @@ public partial class MainWindow : Window
         ScrollViewer scrollViewer,
         string outputDirectory,
         string name,
-        double targetOffset)
+        double? targetOffset)
     {
         var timer = Stopwatch.StartNew();
-        scrollViewer.ScrollToVerticalOffset(targetOffset);
+        if (targetOffset.HasValue)
+        {
+            scrollViewer.ScrollToVerticalOffset(targetOffset.Value);
+        }
         await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
         UpdateLayout();
 
