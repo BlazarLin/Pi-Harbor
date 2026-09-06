@@ -29,6 +29,12 @@ public sealed class MarkdownTextBlock : StackPanel
         typeof(MarkdownTextBlock),
         new FrameworkPropertyMetadata(string.Empty, FrameworkPropertyMetadataOptions.AffectsMeasure, OnMarkdownChanged));
 
+    public static readonly DependencyProperty IsStreamingProperty = DependencyProperty.Register(
+        nameof(IsStreaming),
+        typeof(bool),
+        typeof(MarkdownTextBlock),
+        new FrameworkPropertyMetadata(false, OnIsStreamingChanged));
+
     private readonly DispatcherTimer _renderTimer;
 
     public MarkdownTextBlock()
@@ -48,6 +54,12 @@ public sealed class MarkdownTextBlock : StackPanel
     {
         get => (string)GetValue(MarkdownProperty);
         set => SetValue(MarkdownProperty, value);
+    }
+
+    public bool IsStreaming
+    {
+        get => (bool)GetValue(IsStreamingProperty);
+        set => SetValue(IsStreamingProperty, value);
     }
 
     public Brush Foreground
@@ -72,7 +84,24 @@ public sealed class MarkdownTextBlock : StackPanel
     {
         var control = (MarkdownTextBlock)dependencyObject;
         control._renderTimer.Stop();
-        control._renderTimer.Start();
+        if (control.IsStreaming)
+        {
+            control._renderTimer.Start();
+        }
+        else
+        {
+            control.RenderMarkdown();
+        }
+    }
+
+    private static void OnIsStreamingChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+    {
+        var control = (MarkdownTextBlock)dependencyObject;
+        if (!(bool)args.NewValue)
+        {
+            control._renderTimer.Stop();
+            control.RenderMarkdown();
+        }
     }
 
     private void RenderMarkdown()

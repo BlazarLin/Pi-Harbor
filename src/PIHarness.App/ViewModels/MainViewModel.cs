@@ -414,6 +414,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 State = ChatSessionState.Streaming;
                 break;
             case "agent_settled":
+                CompleteStreamItems();
                 State = ChatSessionState.Ready;
                 break;
             case "message_start":
@@ -498,6 +499,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var stopReason = ReadString(message, "stopReason");
         if (stopReason == "error")
         {
+            CompleteStreamItems();
             var errorMessage = ReadString(message, "errorMessage");
             Messages.Add(new ChatItemViewModel(
                 ChatItemKind.Error,
@@ -512,6 +514,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
         {
+            CompleteStreamItems();
             return;
         }
 
@@ -546,6 +549,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
             nIndex++;
         }
+
+        CompleteStreamItems();
     }
 
     private void ApplyToolEvent(string eventType, JsonElement payload)
@@ -554,7 +559,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var name = ReadString(payload, "toolName");
         if (!_toolItems.TryGetValue(id, out var item))
         {
-            item = new ChatItemViewModel(ChatItemKind.Tool, string.Empty) { Key = id };
+            item = new ChatItemViewModel(ChatItemKind.Tool, string.Empty) { Key = id, IsStreaming = true };
             _toolItems[id] = item;
             Messages.Add(item);
         }
@@ -573,6 +578,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             item.Text = payload.TryGetProperty("result", out var result) ? ReadResultText(result) : string.Empty;
             item.IsError = payload.TryGetProperty("isError", out var isError) && isError.ValueKind == JsonValueKind.True;
             item.IsCompleted = true;
+            item.IsStreaming = false;
         }
     }
 
@@ -583,10 +589,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return item;
         }
 
-        item = new ChatItemViewModel(kind, string.Empty);
+        item = new ChatItemViewModel(kind, string.Empty) { IsStreaming = true };
         _streamItems[nContentIndex] = item;
         Messages.Add(item);
         return item;
+    }
+
+    private void CompleteStreamItems()
+    {
+        foreach (var item in _streamItems.Values)
+        {
+            item.IsStreaming = false;
+        }
     }
 
     private static string ReadContentText(JsonElement container)
@@ -734,6 +748,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private string _key = string.Empty;
     private bool _isError;
     private bool _isCompleted;
+    private bool _isStreaming;
 
     public ChatItemViewModel(ChatItemKind kind, string text)
     {
@@ -771,6 +786,12 @@ public sealed class ChatItemViewModel : ObservableObject
     {
         get => _isCompleted;
         set => SetProperty(ref _isCompleted, value);
+    }
+
+    public bool IsStreaming
+    {
+        get => _isStreaming;
+        set => SetProperty(ref _isStreaming, value);
     }
 
     public void Append(string text)

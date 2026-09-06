@@ -24,7 +24,7 @@
                 <Border MaxWidth="760" HorizontalAlignment="Right"
                         Background="{StaticResource UserBubbleBrush}"
                         CornerRadius="9" Padding="14,10">
-                    <p:MarkdownTextBlock Markdown="{Binding Text}"
+                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource PrimaryTextBrush}"
                                          FontSize="14" />
                 </Border>
@@ -34,7 +34,7 @@
         <DataTemplate x:Key="AssistantMessageTemplate">
             <Grid Margin="18,8,70,8">
                 <p:MarkdownTextBlock MaxWidth="880" HorizontalAlignment="Left"
-                                     Markdown="{Binding Text}"
+                                     Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                      Foreground="{StaticResource PrimaryTextBrush}"
                                      FontSize="14" />
             </Grid>
@@ -45,7 +45,7 @@
                       Header="思考过程" IsExpanded="False">
                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,0"
                         Margin="0,6,0,0" Padding="10,4">
-                    <p:MarkdownTextBlock Markdown="{Binding Text}"
+                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource SecondaryTextBrush}"
                                          FontSize="13" />
                 </Border>
@@ -58,7 +58,7 @@
                 <Border Background="{StaticResource PanelBrush}" CornerRadius="6"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                         Margin="0,6,0,0" Padding="10,7">
-                    <p:MarkdownTextBlock Markdown="{Binding Text}"
+                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource SecondaryTextBrush}"
                                          FontFamily="Cascadia Mono, Consolas" FontSize="12" />
                 </Border>
@@ -68,7 +68,7 @@
         <DataTemplate x:Key="SystemMessageTemplate">
             <Border Margin="18,5,70,5" BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="1" CornerRadius="6" Padding="10,7">
-                <p:MarkdownTextBlock Markdown="{Binding Text}"
+                <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                      Foreground="{StaticResource SecondaryTextBrush}"
                                      FontSize="13" />
             </Border>
