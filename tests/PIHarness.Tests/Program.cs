@@ -76,6 +76,26 @@ internal static class Program
             }
         }
 
+        var liveHistoryPath = ReadOption(args, "--live-history-probe");
+        if (!string.IsNullOrWhiteSpace(liveHistoryPath))
+        {
+            try
+            {
+                var timer = Stopwatch.StartNew();
+                var snapshot = await SessionHistoryReader.ReadAsync(liveHistoryPath, CancellationToken.None).ConfigureAwait(false);
+                timer.Stop();
+                var fileSizeMb = Math.Round(new FileInfo(liveHistoryPath).Length / 1024d / 1024d, 2);
+                Console.WriteLine(
+                    $"[实机会话] 文件 {fileSizeMb} MB，条目 {snapshot.EntryCount}，" +
+                    $"显示项 {snapshot.Items.Count}，警告 {snapshot.Warnings.Count}，耗时 {timer.ElapsedMilliseconds} ms");
+            }
+            catch (Exception exception)
+            {
+                nFailed++;
+                Console.WriteLine($"[实机失败] 本地轻量历史读取：{exception.Message}");
+            }
+        }
+
         if (args.Contains("--live-pi-probe", StringComparer.Ordinal))
         {
             try
