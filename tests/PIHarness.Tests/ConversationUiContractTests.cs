@@ -10,7 +10,7 @@ namespace PIHarness.Tests;
 
 internal static class ConversationUiContractTests
 {
-    [TestCase("TEST-20A", "详细对话使用稳定虚拟化、相邻页缓存和像素滚动")]
+    [TestCase("TEST-20A", "详细对话使用稳定虚拟化、相邻页缓存和项目锚点滚动")]
     public static void MessageListUsesStableVirtualization()
     {
         var document = XDocument.Load(SourcePath("MainWindow.xaml"));
@@ -21,7 +21,7 @@ internal static class ConversationUiContractTests
         AssertEx.Equal("Standard", AttributeValue(list, "VirtualizationMode"), "消息容器不得复用旧 Markdown 视觉树");
         AssertEx.Equal("1", AttributeValue(list, "CacheLength"), "必须提前实现相邻一页消息");
         AssertEx.Equal("Page", AttributeValue(list, "CacheLengthUnit"), "缓存长度单位必须为页");
-        AssertEx.Equal("Pixel", AttributeValue(list, "ScrollUnit"), "可变高度消息必须按像素滚动");
+        AssertEx.Equal("Item", AttributeValue(list, "ScrollUnit"), "可变高度虚拟消息必须按稳定项目锚点滚动");
     }
 
     [TestCase("TEST-20B", "历史阅读提供回到最新、加载反馈和消息数量")]
@@ -32,6 +32,11 @@ internal static class ConversationUiContractTests
         AssertEx.True(xaml.Contains("正在读取会话", StringComparison.Ordinal), "大会话加载期间必须提供明确反馈");
         AssertEx.True(xaml.Contains("MessageCountText", StringComparison.Ordinal), "标题区必须显示当前消息规模");
         AssertEx.True(xaml.Contains("PreviewMouseWheel=\"OnMessagePreviewMouseWheel\"", StringComparison.Ordinal), "滚轮输入必须先于布局事件更新阅读意图");
+
+        var code = File.ReadAllText(SourcePath("MainWindow.xaml.cs"));
+        var nHandler = code.IndexOf("private void OnMessagePreviewMouseWheel", StringComparison.Ordinal);
+        var nCancel = code.IndexOf("CancelPendingAutoScroll();", nHandler, StringComparison.Ordinal);
+        AssertEx.True(nHandler >= 0 && nCancel > nHandler, "用户上滚时必须取消尚未执行的自动滚底任务");
     }
 
     [TestCase("TEST-20C", "思考与工具详情的展开状态离开视口后仍保留")]

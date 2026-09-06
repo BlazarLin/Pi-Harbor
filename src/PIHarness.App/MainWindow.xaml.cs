@@ -3,8 +3,11 @@
 
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -23,7 +26,7 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel = new();
     private readonly HashSet<ChatItemViewModel> _subscribedMessages = [];
-    private readonly ChatScrollCoordinator _scrollCoordinator = new(80);
+    private readonly ChatScrollCoordinator _scrollCoordinator = new(1);
     private DispatcherOperation? _pendingScrollOperation;
     private bool _shutdownComplete;
 
@@ -62,6 +65,17 @@ public partial class MainWindow : Window
         }
 
         var capturePath = ReadCommandLineOption("--capture-ui");
+        var scrollQaDirectory = ReadCommandLineOption("--qa-scroll-capture-dir");
+        if (!string.IsNullOrWhiteSpace(scrollQaDirectory))
+        {
+            var bPassed = await RunScrollQaAsync(scrollQaDirectory);
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Environment.ExitCode = bPassed ? 0 : 1;
+            Close();
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(capturePath))
         {
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
@@ -170,6 +184,10 @@ public partial class MainWindow : Window
     private void OnMessagePreviewMouseWheel(object sender, MouseWheelEventArgs args)
     {
         _scrollCoordinator.OnUserWheel(args.Delta);
+        if (args.Delta > 0)
+        {
+            CancelPendingAutoScroll();
+        }
         UpdateReturnToLatestVisibility();
     }
 
@@ -185,6 +203,16 @@ public partial class MainWindow : Window
         ReturnToLatestButton.Visibility = _scrollCoordinator.IsFollowingLatest
             ? Visibility.Collapsed
             : Visibility.Visible;
+    }
+
+    private void CancelPendingAutoScroll()
+    {
+        if (_pendingScrollOperation is { Status: DispatcherOperationStatus.Pending })
+        {
+            _pendingScrollOperation.Abort();
+        }
+
+        _pendingScrollOperation = null;
     }
 
     private void ScrollToBottomIfNeeded()
@@ -220,7 +248,98 @@ public partial class MainWindow : Window
         _ = DwmSetWindowAttribute(source.Handle, 20, ref enabled, sizeof(int));
     }
 
-    private void CaptureWindow(string outputPath)
+    private async Task<bool> RunScrollQaAsync(string outputDirectory)
+    {
+        var fullDirectory = Path.GetFullPath(outputDirectory);
+        Directory.CreateDirectory(fullDirectory);
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        UpdateLayout();
+
+        var scrollViewer = FindVisualChild<ScrollViewer>(MessageList);
+        if (scrollViewer is null || _viewModel.Messages.Count == 0)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(fullDirectory, "scroll-qa.txt"),
+                "[失败] TEST-UI-01：未找到消息滚动区域或会话没有消息。",
+                new UTF8Encoding(false));
+            return false;
+        }
+
+        MessageList.ScrollIntoView(_viewModel.Messages[^1]);
+        scrollViewer.ScrollToEnd();
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+        UpdateLayout();
+        var bottom = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "01-bottom", scrollViewer.ScrollableHeight);
+
+        _scrollCoordinator.OnUserWheel(120);
+        CancelPendingAutoScroll();
+        UpdateReturnToLatestVisibility();
+        var upOneTarget = Math.Max(0, bottom.VerticalOffset - scrollViewer.ViewportHeight);
+        var upOne = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "02-up-one-page", upOneTarget);
+        var upFourTarget = Math.Max(0, upOne.VerticalOffset - scrollViewer.ViewportHeight * 4);
+        var upFour = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "03-up-four-pages", upFourTarget);
+        var downTwoTarget = Math.Min(scrollViewer.ScrollableHeight, upFour.VerticalOffset + scrollViewer.ViewportHeight * 2);
+        var downTwo = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "04-down-two-pages", downTwoTarget);
+
+        var steps = new[] { bottom, upOne, upFour, downTwo };
+        var bDirectionPassed = bottom.VerticalOffset > upOne.VerticalOffset &&
+                               upOne.VerticalOffset > upFour.VerticalOffset &&
+                               downTwo.VerticalOffset > upFour.VerticalOffset;
+        var bStablePassed = steps.All(step => step.StableFrames);
+        var bResponsivePassed = steps.All(step => step.StepElapsedMilliseconds < 3000);
+        var bReadingIntentPassed = !_scrollCoordinator.IsFollowingLatest &&
+                                   ReturnToLatestButton.Visibility == Visibility.Visible;
+        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed;
+
+        var report = new StringBuilder();
+        report.AppendLine($"[{(bDirectionPassed ? "通过" : "失败")}] TEST-UI-01：上下滚动方向与目标偏移一致");
+        report.AppendLine($"[{(bStablePassed ? "通过" : "失败")}] TEST-UI-02：每个阅读位置静置双帧完全一致");
+        report.AppendLine($"[{(bResponsivePassed ? "通过" : "失败")}] TEST-UI-03：每次滚动、布局与双帧捕获均小于 3000 ms");
+        report.AppendLine($"[{(bReadingIntentPassed ? "通过" : "失败")}] TEST-UI-04：离开底部后保持历史阅读并显示回到最新入口");
+        report.AppendLine($"会话显示项：{_viewModel.Messages.Count}；视口高度：{scrollViewer.ViewportHeight:F1}；可滚动高度：{scrollViewer.ScrollableHeight:F1}");
+        foreach (var step in steps)
+        {
+            report.AppendLine(
+                $"{step.Name}: offset={step.VerticalOffset:F1}, elapsed={step.StepElapsedMilliseconds} ms, " +
+                $"stable={step.StableFrames}, sha256={step.FirstFrameHash}");
+        }
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fullDirectory, "scroll-qa.txt"),
+            report.ToString(),
+            new UTF8Encoding(false));
+        return bPassed;
+    }
+
+    private async Task<ScrollQaStep> CaptureScrollStepAsync(
+        ScrollViewer scrollViewer,
+        string outputDirectory,
+        string name,
+        double targetOffset)
+    {
+        var timer = Stopwatch.StartNew();
+        scrollViewer.ScrollToVerticalOffset(targetOffset);
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+        UpdateLayout();
+
+        var firstPath = Path.Combine(outputDirectory, $"{name}-a.png");
+        var secondPath = Path.Combine(outputDirectory, $"{name}-b.png");
+        var firstHash = CaptureWindow(firstPath);
+        await Task.Delay(120);
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        UpdateLayout();
+        var secondHash = CaptureWindow(secondPath);
+        timer.Stop();
+
+        return new ScrollQaStep(
+            name,
+            scrollViewer.VerticalOffset,
+            timer.ElapsedMilliseconds,
+            string.Equals(firstHash, secondHash, StringComparison.Ordinal),
+            firstHash);
+    }
+
+    private string CaptureWindow(string outputPath)
     {
         UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(this);
@@ -237,8 +356,31 @@ public partial class MainWindow : Window
 
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+        using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
         encoder.Save(stream);
+        stream.Flush();
+        stream.Position = 0;
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var nIndex = 0; nIndex < VisualTreeHelper.GetChildrenCount(parent); nIndex++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, nIndex);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
     private static string? ReadCommandLineOption(string option)
@@ -257,4 +399,11 @@ public partial class MainWindow : Window
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);
+
+    private sealed record ScrollQaStep(
+        string Name,
+        double VerticalOffset,
+        long StepElapsedMilliseconds,
+        bool StableFrames,
+        string FirstFrameHash);
 }

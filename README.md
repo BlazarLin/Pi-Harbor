@@ -11,6 +11,8 @@ PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫�
 - 加载已有会话的当前有效分支并继续交互。
 - 大型会话直接读取轻量文字历史，跳过图片 Base64，并在后台等待 pi 完整上下文就绪。
 - 流式显示助手文本，折叠显示思考与工具调用。
+- 大会话按像素稳定滚动；离开底部后不会被新布局拉回，并可点击“回到最新”。
+- 历史 Markdown 同步布局，思考与工具展开状态在滚出视口后仍保留。
 - 支持常用 Markdown 标题、列表、粗体、行内代码和代码块。
 - pi 生成期间可点击“停止”。
 - 监视会话目录变化并自动刷新侧边栏。
@@ -52,6 +54,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 
 - `artifacts\PI-Harness-win-x64\`
 - `artifacts\PI-Harness-win-x64.zip`
+
+真实大会话滚动验收（只读，不发送模型请求）：
+
+```powershell
+artifacts\PI-Harness-win-x64\PI-Harness.exe `
+  --capture-session <session.jsonl> `
+  --qa-scroll-capture-dir artifacts\qa\scroll-top10
+```
+
+该入口输出四组静置双帧和 `scroll-qa.txt`，验证上下滚动方向、阅读位置稳定性、响应耗时以及“回到最新”状态。
 
 ## 架构
 
