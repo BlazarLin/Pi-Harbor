@@ -12,3 +12,15 @@ public enum ChatItemKind
     System,
     Error,
 }
+
+public sealed record SessionHistoryItem(
+    ChatItemKind Kind,
+    string Text,
+    string Title = "",
+    string Key = "",
+    bool IsError = false);
+
+public sealed record SessionHistorySnapshot(
+    IReadOnlyList<SessionHistoryItem> Items,
+    IReadOnlyList<string> Warnings,
+    int EntryCount);
