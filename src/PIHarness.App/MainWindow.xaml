@@ -190,7 +190,7 @@
                 </Border>
 
                 <TreeView x:Name="SessionTree" ItemsSource="{Binding Projects}"
-                          IsEnabled="{Binding CanSwitchSession}"
+                          IsHitTestVisible="{Binding CanSwitchSession}"
                           SelectedItemChanged="OnSessionSelected"
                           Background="Transparent" BorderThickness="0"
                           Padding="8,0,8,8" Foreground="{StaticResource PrimaryTextBrush}"

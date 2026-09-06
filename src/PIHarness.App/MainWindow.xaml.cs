@@ -89,8 +89,8 @@ public partial class MainWindow : Window
     {
         if (args.NewValue is SessionItemViewModel sessionItem && _viewModel.CanSwitchSession)
         {
-            await _viewModel.OpenSessionAsync(sessionItem.Session);
             PromptBox.Focus();
+            await _viewModel.OpenSessionAsync(sessionItem.Session);
         }
     }
 
