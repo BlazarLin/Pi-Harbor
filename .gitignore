@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+artifacts/
+publish/
+TestResults/
+
+# Visual Studio and IDE state
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Runtime diagnostics
+*.log
+*.dmp
+
+# Local test data
+tests/runtime/
+
+# Operating-system files
+Thumbs.db
+Desktop.ini
