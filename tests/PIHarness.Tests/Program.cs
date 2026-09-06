@@ -133,11 +133,81 @@ internal static class Program
 
             object response = command switch
             {
-                "get_state" => new { id, type = "response", command, success = true, data = new { isStreaming = false, sessionId = "fake-session" } },
+                "get_state" => new
+                {
+                    id,
+                    type = "response",
+                    command,
+                    success = true,
+                    data = new
+                    {
+                        isStreaming = false,
+                        sessionId = "fake-session",
+                        sessionName = "伪会话",
+                        model = new { id = "fake-model", provider = "fake" },
+                    },
+                },
+                "get_messages" => new
+                {
+                    id,
+                    type = "response",
+                    command,
+                    success = true,
+                    data = new
+                    {
+                        messages = new object[]
+                        {
+                            new { role = "user", content = "历史问题" },
+                            new
+                            {
+                                role = "assistant",
+                                content = new object[] { new { type = "text", text = "历史回答" } },
+                                stopReason = "stop",
+                            },
+                        },
+                    },
+                },
                 "clear_queue" => new { id, type = "response", command, success = true, data = new { steering = Array.Empty<string>(), followUp = Array.Empty<string>() } },
                 _ => new { id, type = "response", command, success = true, data = new { } },
             };
             Console.Out.WriteLine(JsonSerializer.Serialize(response));
+
+            if (command == "prompt")
+            {
+                WriteFakeEvent(new { type = "agent_start" });
+                WriteFakeEvent(new { type = "message_start", message = new { role = "assistant", content = Array.Empty<object>() } });
+                WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "thinking_start", contentIndex = 0 } });
+                WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "thinking_delta", contentIndex = 0, delta = "思考过程" } });
+                WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "text_start", contentIndex = 1 } });
+                WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "text_delta", contentIndex = 1, delta = "流式" } });
+                WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "text_delta", contentIndex = 1, delta = "回复" } });
+                WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "toolcall_start", contentIndex = 2, id = "tool-1", toolName = "read" } });
+                WriteFakeEvent(new { type = "tool_execution_start", toolCallId = "tool-1", toolName = "read", args = new { path = "demo.txt" } });
+                WriteFakeEvent(new
+                {
+                    type = "tool_execution_end",
+                    toolCallId = "tool-1",
+                    toolName = "read",
+                    result = new { content = new object[] { new { type = "text", text = "工具结果" } } },
+                    isError = false,
+                });
+                WriteFakeEvent(new
+                {
+                    type = "message_end",
+                    message = new
+                    {
+                        role = "assistant",
+                        content = new object[]
+                        {
+                            new { type = "thinking", thinking = "思考过程" },
+                            new { type = "text", text = "流式回复" },
+                            new { type = "toolCall", id = "tool-1", name = "read", arguments = new { path = "demo.txt" } },
+                        },
+                        stopReason = "stop",
+                    },
+                });
+                WriteFakeEvent(new { type = "agent_settled" });
+            }
 
             if (command == "abort")
             {
@@ -152,6 +222,11 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static void WriteFakeEvent(object value)
+    {
+        Console.Out.WriteLine(JsonSerializer.Serialize(value));
     }
 
     private static string? ReadOption(IReadOnlyList<string> args, string option)
