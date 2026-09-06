@@ -54,6 +54,12 @@ public static class PiProcessLocator
             command.Append(QuoteForCmd(Path.GetFullPath(options.SessionPath)));
         }
 
+        if (!string.IsNullOrWhiteSpace(options.SessionDirectory))
+        {
+            command.Append(" --session-dir ");
+            command.Append(QuoteForCmd(Path.GetFullPath(options.SessionDirectory)));
+        }
+
         var comSpec = Environment.GetEnvironmentVariable("ComSpec");
         if (string.IsNullOrWhiteSpace(comSpec))
         {

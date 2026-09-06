@@ -4,6 +4,7 @@
 using System.Reflection;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text;
 using PIHarness.Core.Rpc;
 using PIHarness.Core.Sessions;
 
@@ -103,6 +104,21 @@ internal static class Program
             }
         }
 
+        var liveChatProject = ReadOption(args, "--live-chat-probe");
+        if (!string.IsNullOrWhiteSpace(liveChatProject))
+        {
+            try
+            {
+                var liveModel = ReadOption(args, "--live-model") ?? "ark/glm-5.3";
+                await RunLiveChatProbeAsync(liveChatProject, liveModel).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                nFailed++;
+                Console.WriteLine($"[实机失败] pi 新建与继续会话：{exception}");
+            }
+        }
+
         Console.WriteLine($"测试完成：总计 {testMethods.Length}，通过 {testMethods.Length - nFailed}，失败 {nFailed}");
         return nFailed == 0 ? 0 : 1;
     }
@@ -174,6 +190,29 @@ internal static class Program
 
             if (command == "prompt")
             {
+                var promptMessage = root.TryGetProperty("message", out var promptElement)
+                    ? promptElement.GetString()
+                    : null;
+                if (promptMessage == "触发模型错误")
+                {
+                    WriteFakeEvent(new { type = "agent_start" });
+                    WriteFakeEvent(new { type = "message_start", message = new { role = "assistant", content = Array.Empty<object>() } });
+                    WriteFakeEvent(new
+                    {
+                        type = "message_end",
+                        message = new
+                        {
+                            role = "assistant",
+                            content = Array.Empty<object>(),
+                            stopReason = "error",
+                            errorMessage = "429：套餐已过期",
+                        },
+                    });
+                    WriteFakeEvent(new { type = "agent_settled" });
+                    Console.Out.Flush();
+                    continue;
+                }
+
                 WriteFakeEvent(new { type = "agent_start" });
                 WriteFakeEvent(new { type = "message_start", message = new { role = "assistant", content = Array.Empty<object>() } });
                 WriteFakeEvent(new { type = "message_update", assistantMessageEvent = new { type = "thinking_start", contentIndex = 0 } });
@@ -222,6 +261,107 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static async Task RunLiveChatProbeAsync(string projectDirectory, string modelName)
+    {
+        var projectPath = Path.GetFullPath(projectDirectory);
+        Directory.CreateDirectory(projectPath);
+        var sessionDirectory = Path.Combine(projectPath, ".test-sessions", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sessionDirectory);
+
+        string sessionFile;
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var assistantText = new StringBuilder();
+        try
+        {
+            await using (var client = new PiRpcClient())
+            {
+                client.EventReceived += (_, rpcEvent) =>
+                {
+                    if (rpcEvent.Type == "agent_settled")
+                    {
+                        settled.TrySetResult();
+                    }
+                    else if (rpcEvent.Type == "message_update" &&
+                             rpcEvent.Payload.TryGetProperty("assistantMessageEvent", out var messageEvent) &&
+                             messageEvent.TryGetProperty("type", out var type) && type.GetString() == "text_delta" &&
+                             messageEvent.TryGetProperty("delta", out var delta))
+                    {
+                        lock (assistantText)
+                        {
+                            assistantText.Append(delta.GetString());
+                        }
+                    }
+                };
+                await client.StartAsync(
+                    new PiStartOptions(projectPath, SessionDirectory: sessionDirectory),
+                    CancellationToken.None).ConfigureAwait(false);
+                var modelParts = modelName.Split('/', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (modelParts.Length != 2)
+                {
+                    throw new InvalidOperationException($"实机模型必须使用 provider/model 格式：{modelName}");
+                }
+
+                await client.RequestAsync(
+                    "set_model",
+                    new Dictionary<string, object?> { ["provider"] = modelParts[0], ["modelId"] = modelParts[1] },
+                    TimeSpan.FromSeconds(20),
+                    CancellationToken.None).ConfigureAwait(false);
+                await client.SendPromptAsync("仅回复 PI_HARNESS_TEST_OK，不要调用工具。", CancellationToken.None).ConfigureAwait(false);
+                await settled.Task.WaitAsync(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
+
+                var state = await client.RequestAsync("get_state", CancellationToken.None).ConfigureAwait(false);
+                sessionFile = state.GetProperty("data").GetProperty("sessionFile").GetString()
+                    ?? throw new InvalidOperationException("pi 未返回会话文件路径");
+                var lastTextResponse = await client.RequestAsync("get_last_assistant_text", CancellationToken.None).ConfigureAwait(false);
+                var messagesResponse = await client.RequestAsync("get_messages", CancellationToken.None).ConfigureAwait(false);
+                var lastTextData = lastTextResponse.GetProperty("data");
+                var finalAssistantText = lastTextData.TryGetProperty("text", out var textElement)
+                    ? textElement.GetString() ?? string.Empty
+                    : string.Empty;
+                AssertLive(File.Exists(sessionFile), "新会话未持久化");
+                if (!finalAssistantText.Contains("PI_HARNESS_TEST_OK", StringComparison.Ordinal))
+                {
+                    var messages = messagesResponse.GetProperty("data").GetProperty("messages");
+                    var errorMessage = messages.EnumerateArray()
+                        .Where(message => message.TryGetProperty("role", out var role) && role.GetString() == "assistant")
+                        .Select(message => message.TryGetProperty("errorMessage", out var error) ? error.GetString() : null)
+                        .LastOrDefault(error => !string.IsNullOrWhiteSpace(error));
+                    throw new InvalidOperationException(errorMessage is null
+                        ? $"最终回复不符合预期：{finalAssistantText}"
+                        : $"模型 {modelName} 返回错误：{errorMessage}");
+                }
+                Console.WriteLine($"[实机信息] 增量文本 {assistantText.Length} 字符，最终文本 {finalAssistantText.Length} 字符");
+            }
+
+            await using (var resumedClient = new PiRpcClient())
+            {
+                await resumedClient.StartAsync(
+                    new PiStartOptions(projectPath, SessionPath: sessionFile, SessionDirectory: sessionDirectory),
+                    CancellationToken.None).ConfigureAwait(false);
+                var response = await resumedClient.RequestAsync("get_messages", CancellationToken.None).ConfigureAwait(false);
+                var messages = response.GetProperty("data").GetProperty("messages");
+                AssertLive(messages.GetArrayLength() >= 2, "重新打开后历史消息不完整");
+            }
+
+            Console.WriteLine($"[实机通过] TEST-07/08：新建、流式回复、持久化和继续会话成功，文件 {Path.GetFileName(sessionFile)}");
+        }
+        finally
+        {
+            if (Directory.Exists(sessionDirectory))
+            {
+                Directory.Delete(sessionDirectory, recursive: true);
+            }
+        }
+    }
+
+    private static void AssertLive(bool bCondition, string message)
+    {
+        if (!bCondition)
+        {
+            throw new InvalidOperationException(message);
+        }
     }
 
     private static void WriteFakeEvent(object value)

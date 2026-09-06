@@ -471,8 +471,27 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplyMessageEnd(JsonElement payload)
     {
-        if (!payload.TryGetProperty("message", out var message) || ReadString(message, "role") != "assistant" ||
-            !message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+        if (!payload.TryGetProperty("message", out var message) || ReadString(message, "role") != "assistant")
+        {
+            return;
+        }
+
+        var stopReason = ReadString(message, "stopReason");
+        if (stopReason == "error")
+        {
+            var errorMessage = ReadString(message, "errorMessage");
+            Messages.Add(new ChatItemViewModel(
+                ChatItemKind.Error,
+                string.IsNullOrWhiteSpace(errorMessage) ? "模型返回未知错误。" : errorMessage));
+            return;
+        }
+
+        if (stopReason == "aborted")
+        {
+            Messages.Add(new ChatItemViewModel(ChatItemKind.System, "已停止生成。"));
+        }
+
+        if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
         {
             return;
         }

@@ -16,10 +16,16 @@ internal static class PiProcessLocatorTests
 
         var startInfo = PiProcessLocator.CreateStartInfo(
             result.PiCommandPath!,
-            new PiStartOptions(cwd, SessionPath: "G:\\会话 1.jsonl", NoSession: false, Offline: true));
+            new PiStartOptions(
+                cwd,
+                SessionPath: "G:\\会话 1.jsonl",
+                NoSession: false,
+                Offline: true,
+                SessionDirectory: Path.Combine(cwd, "sessions")));
 
         AssertEx.Equal(cwd, startInfo.WorkingDirectory, "工作目录必须等于用户选择目录");
         AssertEx.True(startInfo.RedirectStandardInput && startInfo.RedirectStandardOutput, "RPC 标准流必须重定向");
         AssertEx.True(startInfo.Arguments.Contains("--session", StringComparison.Ordinal), "启动命令必须包含会话参数");
+        AssertEx.True(startInfo.Arguments.Contains("--session-dir", StringComparison.Ordinal), "启动命令必须支持隔离会话目录");
     }
 }

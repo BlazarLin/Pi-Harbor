@@ -52,6 +52,22 @@ internal static class MainViewModelTests
         AssertEx.True(viewModel.Messages.Any(item => item.Kind == ChatItemKind.Tool && item.Text.Contains("工具结果", StringComparison.Ordinal)), "应映射工具结果");
     }
 
+    [TestCase("TEST-09B", "模型失败且正文为空时显示具体错误")]
+    public static async Task ShowsAssistantErrorMessageAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        await using var viewModel = CreateViewModel(directory.Path, out _);
+        await viewModel.CreateSessionAsync(directory.Path);
+        viewModel.InputText = "触发模型错误";
+
+        await viewModel.SendAsync();
+        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+
+        AssertEx.True(
+            viewModel.Messages.Any(item => item.Kind == ChatItemKind.Error && item.Text.Contains("429", StringComparison.Ordinal)),
+            "聊天区应显示 pi 返回的模型错误");
+    }
+
     [TestCase("TEST-11", "目录变化刷新侧边栏且保留当前服务稳定")]
     public static async Task RefreshesCatalogAfterFileChangeAsync()
     {

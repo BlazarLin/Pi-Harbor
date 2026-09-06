@@ -9,7 +9,8 @@ public sealed record PiStartOptions(
     string WorkingDirectory,
     string? SessionPath = null,
     bool NoSession = false,
-    bool Offline = false);
+    bool Offline = false,
+    string? SessionDirectory = null);
 
 public sealed record PiLaunchResult(bool Found, string? PiCommandPath, string? ErrorMessage);
 
