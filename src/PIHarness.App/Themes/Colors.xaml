@@ -6,6 +6,7 @@
     <Color x:Key="PanelColor">#232222</Color>
     <Color x:Key="HoverColor">#2B2A2A</Color>
     <Color x:Key="SelectedColor">#343232</Color>
+    <Color x:Key="CurrentSessionColor">#454064</Color>
     <Color x:Key="BorderColor">#383636</Color>
     <Color x:Key="PrimaryTextColor">#F1EEEE</Color>
     <Color x:Key="SecondaryTextColor">#A8A3A3</Color>
@@ -19,6 +20,7 @@
     <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource PanelColor}" />
     <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource HoverColor}" />
     <SolidColorBrush x:Key="SelectedBrush" Color="{StaticResource SelectedColor}" />
+    <SolidColorBrush x:Key="CurrentSessionBrush" Color="{StaticResource CurrentSessionColor}" />
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource PrimaryTextColor}" />
     <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource SecondaryTextColor}" />

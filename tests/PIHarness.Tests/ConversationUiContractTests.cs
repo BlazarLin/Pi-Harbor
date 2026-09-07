@@ -49,6 +49,17 @@ internal static class ConversationUiContractTests
         AssertEx.True(xaml.Contains("IsExpanded=\"{Binding IsExpanded, Mode=TwoWay}\"", StringComparison.Ordinal), "详情折叠器必须双向绑定状态");
     }
 
+    [TestCase("TEST-24B", "当前会话使用独立持久颜色且优先于悬停状态")]
+    public static void CurrentSessionUsesPersistentVisualState()
+    {
+        var xaml = File.ReadAllText(SourcePath("MainWindow.xaml"));
+        var colors = File.ReadAllText(Path.Combine(Path.GetDirectoryName(SourcePath("MainWindow.xaml"))!, "Themes", "Colors.xaml"));
+
+        AssertEx.True(xaml.Contains("Header.IsCurrent", StringComparison.Ordinal), "树项目必须绑定会话 ViewModel 的持久当前状态");
+        AssertEx.True(xaml.Contains("CurrentSessionBrush", StringComparison.Ordinal), "当前会话必须使用独立于悬停和普通选择的颜色");
+        AssertEx.True(colors.Contains("x:Key=\"CurrentSessionBrush\"", StringComparison.Ordinal), "主题必须定义当前会话画刷");
+    }
+
     private static string SourcePath(string fileName) =>
         Path.Combine(Path.GetFullPath(Environment.CurrentDirectory), "src", "PIHarness.App", fileName);
 

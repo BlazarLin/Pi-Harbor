@@ -120,7 +120,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string? SelectedSessionPath
     {
         get => _selectedSessionPath;
-        private set => SetProperty(ref _selectedSessionPath, value);
+        private set
+        {
+            if (SetProperty(ref _selectedSessionPath, value))
+            {
+                UpdateCurrentSessionState(value);
+            }
+        }
     }
 
     public ChatSessionState State
@@ -863,7 +869,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Projects.Clear();
         foreach (var project in snapshot.Projects)
         {
-            Projects.Add(new ProjectGroupViewModel(project));
+            Projects.Add(new ProjectGroupViewModel(project, SelectedSessionPath));
         }
 
         if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle)
@@ -871,6 +877,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             StatusText = $"已加载 {snapshot.SessionCount} 个会话，跳过 {snapshot.SkippedFileCount} 个异常文件";
         }
     }
+
+    private void UpdateCurrentSessionState(string? selectedSessionPath)
+    {
+        foreach (var session in Projects.SelectMany(project => project.Sessions))
+        {
+            session.IsCurrent = AreSameSessionPath(session.SessionPath, selectedSessionPath);
+        }
+    }
+
+    private static bool AreSameSessionPath(string sessionPath, string? selectedSessionPath) =>
+        !string.IsNullOrWhiteSpace(selectedSessionPath) &&
+        string.Equals(
+            Path.GetFullPath(sessionPath),
+            Path.GetFullPath(selectedSessionPath),
+            StringComparison.OrdinalIgnoreCase);
 
     private void OnCatalogChanged(object? sender, EventArgs args)
     {
@@ -938,12 +959,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
 public sealed class ProjectGroupViewModel
 {
-    public ProjectGroupViewModel(ProjectGroup project)
+    public ProjectGroupViewModel(ProjectGroup project, string? selectedSessionPath = null)
     {
         Cwd = project.Cwd;
         DisplayName = project.DisplayName;
         LastActivityAt = project.LastActivityAt;
-        Sessions = new ObservableCollection<SessionItemViewModel>(project.Sessions.Select(session => new SessionItemViewModel(session)));
+        Sessions = new ObservableCollection<SessionItemViewModel>(project.Sessions.Select(session =>
+            new SessionItemViewModel(
+                session,
+                !string.IsNullOrWhiteSpace(selectedSessionPath) &&
+                string.Equals(
+                    Path.GetFullPath(session.SessionPath),
+                    Path.GetFullPath(selectedSessionPath),
+                    StringComparison.OrdinalIgnoreCase))));
     }
 
     public string Cwd { get; }
@@ -961,13 +989,21 @@ public sealed class ModelOptionViewModel(string provider, string id, string name
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Key : $"{Name} · {Key}";
 }
 
-public sealed class SessionItemViewModel(SessionSummary session)
+public sealed class SessionItemViewModel(SessionSummary session, bool isCurrent = false) : ObservableObject
 {
+    private bool _isCurrent = isCurrent;
+
     public SessionSummary Session { get; } = session;
     public string SessionPath => Session.SessionPath;
     public string Title => Session.Title;
     public string Cwd => Session.Cwd;
     public DateTimeOffset LastActivityAt => Session.LastActivityAt;
+
+    public bool IsCurrent
+    {
+        get => _isCurrent;
+        set => SetProperty(ref _isCurrent, value);
+    }
 }
 
 public sealed class ChatItemViewModel : ObservableObject

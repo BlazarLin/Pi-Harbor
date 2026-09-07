@@ -127,6 +127,33 @@ internal static class MainViewModelTests
         AssertEx.Equal(2, viewModel.Projects[0].Sessions.Count, "自动刷新后应显示两个会话");
     }
 
+    [TestCase("TEST-24A", "打开、刷新和切换会话时侧栏只保持一个当前项")]
+    public static async Task KeepsCurrentSessionAcrossCatalogRefreshAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var firstPath = WriteConversationSession(directory, "first-current.jsonl");
+        var secondPath = directory.WriteSession(
+            "second-current.jsonl",
+            """
+            {"type":"session","version":3,"id":"session-second","timestamp":"2026-09-06T00:00:00Z","cwd":"G:\\Code\\PI-Harness"}
+            {"type":"message","id":"second-user","parentId":null,"timestamp":"2026-09-06T00:00:03Z","message":{"role":"user","content":"第二个会话"}}
+            """);
+        await using var viewModel = CreateViewModel(directory.Path, out _);
+        await viewModel.InitializeAsync();
+
+        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "第一个会话", firstPath));
+        AssertCurrentSession(viewModel, firstPath, "打开会话后");
+
+        await viewModel.RefreshCatalogAsync();
+        AssertCurrentSession(viewModel, firstPath, "目录刷新后");
+
+        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "第二个会话", secondPath));
+        AssertCurrentSession(viewModel, secondPath, "切换会话后");
+
+        await viewModel.CreateSessionAsync(directory.Path);
+        AssertEx.Equal(0, viewModel.Projects.SelectMany(project => project.Sessions).Count(session => session.IsCurrent), "新对话不应继续高亮历史会话");
+    }
+
     [TestCase("TEST-13", "连续切换空闲会话始终只保留一个 RPC 客户端")]
     public static async Task KeepsOnlyOneActiveClientAsync()
     {
@@ -215,5 +242,12 @@ internal static class MainViewModelTests
 
             await Task.Delay(25);
         }
+    }
+
+    private static void AssertCurrentSession(MainViewModel viewModel, string expectedPath, string stage)
+    {
+        var current = viewModel.Projects.SelectMany(project => project.Sessions).Where(session => session.IsCurrent).ToArray();
+        AssertEx.Equal(1, current.Length, $"{stage}应且仅应有一个当前会话");
+        AssertEx.Equal(Path.GetFullPath(expectedPath), Path.GetFullPath(current[0].SessionPath), $"{stage}当前高亮路径必须正确");
     }
 }
