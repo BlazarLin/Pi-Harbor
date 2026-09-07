@@ -26,5 +26,6 @@ internal static class ScrollQaContractTests
         AssertEx.True(source.Contains("TEST-UI-08", StringComparison.Ordinal), "必须验收微量上滑的像素连续性");
         AssertEx.True(source.Contains("BottomGap", StringComparison.Ordinal), "报告必须记录内容底部空隙");
         AssertEx.True(source.Contains("SmallScrollDelta", StringComparison.Ordinal), "报告必须记录微量滚动距离");
+        AssertEx.True(source.Contains("CaptureElement(MessageList", StringComparison.Ordinal), "双帧稳定性只能比较消息区，不能受模型框异步状态干扰");
     }
 }

@@ -436,11 +436,11 @@ public partial class MainWindow : Window
 
         var firstPath = Path.Combine(outputDirectory, $"{name}-a.png");
         var secondPath = Path.Combine(outputDirectory, $"{name}-b.png");
-        var firstHash = CaptureWindow(firstPath);
+        var firstHash = CaptureElement(MessageList, firstPath);
         await Task.Delay(120);
         await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
         UpdateLayout();
-        var secondHash = CaptureWindow(secondPath);
+        var secondHash = CaptureElement(MessageList, secondPath);
         timer.Stop();
         var thumbLength = GetVerticalThumbLength(scrollViewer);
         var bottomGap = GetLastItemBottomGap(scrollViewer);
