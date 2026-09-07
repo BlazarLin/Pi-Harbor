@@ -17,6 +17,16 @@ TestResults/
 
 # Local test data
 tests/runtime/
+piweb-eval/
+
+# Local credentials and private sessions
+.env
+.env.*
+!.env.example
+.pi/
+*.pfx
+*.p12
+*.key
 
 # Operating-system files
 Thumbs.db

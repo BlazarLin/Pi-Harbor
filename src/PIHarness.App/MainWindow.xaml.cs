@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private DispatcherOperation? _pendingScrollOperation;
     private bool _shutdownComplete;
     private bool _shutdownStarted;
+    private readonly DispatcherTimer _activityTimer = new() { Interval = TimeSpan.FromMinutes(1) };
 
     public MainWindow()
     {
@@ -42,6 +43,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
         InitializeComposer();
+        _activityTimer.Tick += (_, _) => _viewModel.RefreshRelativeActivityTimes(DateTimeOffset.Now);
+        _activityTimer.Start();
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
         SourceInitialized += (_, _) => EnableDarkTitleBar();
     }
@@ -49,6 +52,16 @@ public partial class MainWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await _viewModel.InitializeAsync();
+        var publicCaptureDirectory = ReadCommandLineOption("--capture-public-docs");
+        if (!string.IsNullOrWhiteSpace(publicCaptureDirectory))
+        {
+            var passed = await CapturePublicDocumentationAsync(publicCaptureDirectory);
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Environment.ExitCode = passed ? 0 : 1;
+            Close();
+            return;
+        }
         var composerQaDirectory = ReadCommandLineOption("--qa-composer-capture-dir");
         if (!string.IsNullOrWhiteSpace(composerQaDirectory))
         {
@@ -209,6 +222,7 @@ public partial class MainWindow : Window
         }
 
         _shutdownStarted = true;
+        _activityTimer.Stop();
         _completionCts?.Cancel();
         IsEnabled = false;
         await _viewModel.ShutdownAsync();

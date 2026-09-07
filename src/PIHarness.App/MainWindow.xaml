@@ -186,12 +186,18 @@
         </HierarchicalDataTemplate>
 
         <DataTemplate DataType="{x:Type vm:SessionItemViewModel}">
-            <TextBlock Text="{Binding Title}" ToolTip="{Binding Title}" Margin="2,4,4,4"
-                       TextTrimming="CharacterEllipsis" Foreground="{StaticResource PrimaryTextBrush}" />
+            <StackPanel Margin="2,4,4,4" ToolTip="{Binding ActivityToolTip}">
+                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource PrimaryTextBrush}" />
+                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                    <TextBlock Text="最新 · " Foreground="{StaticResource AccentBrush}" FontSize="11"
+                               Visibility="{Binding IsLatest, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Text="{Binding RelativeActivityText}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" />
+                </StackPanel>
+            </StackPanel>
         </DataTemplate>
 
         <Style TargetType="TreeViewItem">
-            <Setter Property="IsExpanded" Value="True" />
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="Padding" Value="4,1" />
             <Setter Property="Margin" Value="0,1" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -434,11 +440,10 @@
                 </Border>
 
                 <Button x:Name="ReturnToLatestButton" Content="↓  回到最新"
+                        Style="{StaticResource AccentButtonStyle}"
                         Click="OnReturnToLatestClick" Visibility="Collapsed"
                         HorizontalAlignment="Right" VerticalAlignment="Bottom"
                         Margin="0,0,22,18" Padding="14,8"
-                        Foreground="{StaticResource PrimaryTextBrush}"
-                        Background="#E63A3840" BorderBrush="#66616A" BorderThickness="1"
                         Cursor="Hand" />
             </Grid>
 

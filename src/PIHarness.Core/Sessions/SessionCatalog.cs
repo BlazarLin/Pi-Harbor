@@ -13,6 +13,11 @@ public sealed class SessionCatalog : IDisposable
     private readonly object _timerLock = new();
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
+    private Timer? _pollTimer;
+    private bool _changeScheduled;
+    private int _polling;
+    private Dictionary<string, FileStamp> _lastFiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CachedSession> _cache = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public SessionCatalog(string root)
@@ -23,7 +28,11 @@ public sealed class SessionCatalog : IDisposable
 
     public event EventHandler? Changed;
 
-    public static async Task<CatalogSnapshot> ScanAsync(string root, CancellationToken cancellationToken)
+    public static Task<CatalogSnapshot> ScanAsync(string root, CancellationToken cancellationToken) => ScanAsync(root, null, cancellationToken);
+
+    public Task<CatalogSnapshot> ScanCurrentAsync(CancellationToken cancellationToken) => ScanAsync(_root, _cache, cancellationToken);
+
+    private static async Task<CatalogSnapshot> ScanAsync(string root, ConcurrentDictionary<string, CachedSession>? cache, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         if (!Directory.Exists(root))
@@ -52,7 +61,12 @@ public sealed class SessionCatalog : IDisposable
 
         await Parallel.ForEachAsync(files, options, async (file, token) =>
         {
-            var result = await SessionParser.ParseAsync(file, token).ConfigureAwait(false);
+            var stamp = GetStamp(file);
+            var result = cache is not null && cache.TryGetValue(file, out var cached) && cached.Stamp == stamp
+                ? cached.Result
+                : await SessionParser.ParseAsync(file, token).ConfigureAwait(false);
+            if (cache is not null && stamp is not null && stamp == GetStamp(file) && result.IsValid)
+                cache[file] = new CachedSession(stamp, result);
             foreach (var warning in result.Warnings)
             {
                 warnings.Add(warning);
@@ -67,6 +81,12 @@ public sealed class SessionCatalog : IDisposable
                 Interlocked.Increment(ref nSkipped);
             }
         }).ConfigureAwait(false);
+
+        if (cache is not null)
+        {
+            var existing = files.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var path in cache.Keys) if (!existing.Contains(path)) cache.TryRemove(path, out _);
+        }
 
         var projects = sessions
             .GroupBy(session => session.Cwd, StringComparer.OrdinalIgnoreCase)
@@ -89,23 +109,38 @@ public sealed class SessionCatalog : IDisposable
     public void StartWatching()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_watcher is not null || !Directory.Exists(_root))
+        lock (_timerLock)
         {
-            return;
+            if (_pollTimer is not null) return;
+            _debounceTimer = new Timer(OnDebounceElapsed, null, Timeout.Infinite, Timeout.Infinite);
+            TryStartWatcher();
+            // Polling also covers a root created after startup, dropped events and watcher errors.
+            _pollTimer = new Timer(OnPollElapsed, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
         }
+    }
 
-        _debounceTimer = new Timer(OnDebounceElapsed, null, Timeout.Infinite, Timeout.Infinite);
-        _watcher = new FileSystemWatcher(_root, "*.jsonl")
+    private void TryStartWatcher()
+    {
+        if (_disposed || _watcher is not null || !Directory.Exists(_root)) return;
+        try
         {
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            EnableRaisingEvents = true,
-        };
-        _watcher.Created += OnFileChanged;
-        _watcher.Changed += OnFileChanged;
-        _watcher.Deleted += OnFileChanged;
-        _watcher.Renamed += OnFileChanged;
-        _watcher.Error += OnWatcherError;
+            _watcher = new FileSystemWatcher(_root)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            _watcher.Created += OnFileChanged;
+            _watcher.Changed += OnFileChanged;
+            _watcher.Deleted += OnFileChanged;
+            _watcher.Renamed += OnFileChanged;
+            _watcher.Error += OnWatcherError;
+            _watcher.EnableRaisingEvents = true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _watcher?.Dispose();
+            _watcher = null;
+        }
     }
 
     public void Dispose()
@@ -115,11 +150,13 @@ public sealed class SessionCatalog : IDisposable
             return;
         }
 
-        _disposed = true;
-        _watcher?.Dispose();
-        _watcher = null;
         lock (_timerLock)
         {
+            _disposed = true;
+            _watcher?.Dispose();
+            _watcher = null;
+            _pollTimer?.Dispose();
+            _pollTimer = null;
             _debounceTimer?.Dispose();
             _debounceTimer = null;
         }
@@ -134,11 +171,19 @@ public sealed class SessionCatalog : IDisposable
 
     private void OnFileChanged(object sender, FileSystemEventArgs args)
     {
-        ScheduleChanged();
+        if (args.FullPath.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase) ||
+            args.FullPath.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase) ||
+            Directory.Exists(args.FullPath) || args.ChangeType is WatcherChangeTypes.Deleted or WatcherChangeTypes.Renamed)
+            ScheduleChanged();
     }
 
     private void OnWatcherError(object sender, ErrorEventArgs args)
     {
+        lock (_timerLock)
+        {
+            _watcher?.Dispose();
+            _watcher = null;
+        }
         ScheduleChanged();
     }
 
@@ -146,8 +191,9 @@ public sealed class SessionCatalog : IDisposable
     {
         lock (_timerLock)
         {
-            if (!_disposed)
+            if (!_disposed && !_changeScheduled)
             {
+                _changeScheduled = true;
                 _debounceTimer?.Change(DebounceMilliseconds, Timeout.Infinite);
             }
         }
@@ -155,9 +201,52 @@ public sealed class SessionCatalog : IDisposable
 
     private void OnDebounceElapsed(object? state)
     {
-        if (!_disposed)
+        lock (_timerLock)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            _changeScheduled = false;
+            if (_disposed) return;
         }
+        Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    private void OnPollElapsed(object? state)
+    {
+        if (Interlocked.Exchange(ref _polling, 1) != 0) return;
+        try
+        {
+            lock (_timerLock)
+            {
+                if (_disposed) return;
+                if (!Directory.Exists(_root)) { _watcher?.Dispose(); _watcher = null; }
+                TryStartWatcher();
+            }
+            var files = new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase);
+            if (Directory.Exists(_root))
+            {
+                foreach (var file in Directory.EnumerateFiles(_root, "*.jsonl", SearchOption.AllDirectories))
+                    if (GetStamp(file) is { } stamp) files[file] = stamp;
+            }
+            if (files.Count != _lastFiles.Count || files.Any(pair => !_lastFiles.TryGetValue(pair.Key, out var old) || old != pair.Value))
+            {
+                _lastFiles = files;
+                ScheduleChanged();
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { ScheduleChanged(); }
+        finally { Volatile.Write(ref _polling, 0); }
+    }
+
+    private static FileStamp? GetStamp(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            var meta = new FileInfo(Path.ChangeExtension(path, ".meta.json"));
+            return info.Exists ? new FileStamp(info.Length, info.LastWriteTimeUtc.Ticks, meta.Exists ? meta.LastWriteTimeUtc.Ticks : 0) : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    private sealed record FileStamp(long Length, long LastWriteTicks, long MetaWriteTicks);
+    private sealed record CachedSession(FileStamp Stamp, SessionParseResult Result);
 }

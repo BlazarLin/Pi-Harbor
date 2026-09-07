@@ -14,6 +14,12 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        var piSessionManager = ReadOption(args, "--live-pi-discovery");
+        if (piSessionManager is not null)
+        {
+            await ReleaseReadinessTests.VerifyInstalledPiDiscoveryAsync(piSessionManager);
+            return 0;
+        }
         if (args.Contains("--fake-rpc", StringComparer.Ordinal))
         {
             return await RunFakeRpcAsync().ConfigureAwait(false);

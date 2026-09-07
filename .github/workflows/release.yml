@@ -1,0 +1,60 @@
+name: Windows Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate version tag
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content src/PIHarness.App/PIHarness.App.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") {
+            throw "Tag must match project version v$version"
+          }
+      - name: Test and build EXE and ZIP
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -IncludeInstaller -SkipSmokeCapture
+      - name: Keep downloadable build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Pi-Harbor-windows
+          if-no-files-found: error
+          path: |
+            artifacts/Pi-Harbor-Setup-win-x64.exe
+            artifacts/Pi-Harbor-win-x64.zip
+            artifacts/SHA256SUMS.txt
+      - name: Create draft GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft > $env:RUNNER_TEMP/release-state.json 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $existing = Get-Content $env:RUNNER_TEMP/release-state.json | ConvertFrom-Json
+            if (-not $existing.isDraft) { throw 'Refusing to overwrite assets of a published release.' }
+          } else {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --verify-tag --draft --title "Pi Harbor $tag" --notes-file .github/RELEASE_NOTES.md
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
+          }
+          gh release upload $tag artifacts/Pi-Harbor-Setup-win-x64.exe artifacts/Pi-Harbor-win-x64.zip artifacts/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }

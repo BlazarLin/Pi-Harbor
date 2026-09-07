@@ -29,11 +29,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.3.0";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.3.1";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
     private readonly SemaphoreSlim _catalogRefreshLock = new(1, 1);
+    private int _catalogRefreshRequested;
     private readonly SynchronizationContext? _uiContext;
     private readonly Dictionary<int, ChatItemViewModel> _streamItems = new();
     private readonly Dictionary<string, ChatItemViewModel> _toolItems = new(StringComparer.Ordinal);
@@ -209,6 +210,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task RefreshCatalogAsync()
     {
         ThrowIfDisposed();
+        Interlocked.Exchange(ref _catalogRefreshRequested, 1);
         if (!await _catalogRefreshLock.WaitAsync(0).ConfigureAwait(false))
         {
             return;
@@ -216,8 +218,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            var snapshot = await SessionCatalog.ScanAsync(_sessionRoot, CancellationToken.None).ConfigureAwait(false);
-            await RunOnUiAsync(() => ReplaceProjects(snapshot)).ConfigureAwait(false);
+            do
+            {
+                Interlocked.Exchange(ref _catalogRefreshRequested, 0);
+                var snapshot = await _catalog.ScanCurrentAsync(CancellationToken.None).ConfigureAwait(false);
+                if (!_shuttingDown) await RunOnUiAsync(() => ReplaceProjects(snapshot)).ConfigureAwait(false);
+            } while (!_shuttingDown && Volatile.Read(ref _catalogRefreshRequested) != 0);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -226,6 +232,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         finally
         {
             _catalogRefreshLock.Release();
+            if (!_shuttingDown && Volatile.Read(ref _catalogRefreshRequested) != 0) _ = RefreshCatalogAfterChangeAsync();
         }
     }
 
@@ -1022,16 +1029,52 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ReplaceProjects(CatalogSnapshot snapshot)
     {
+        var previous = Projects.SelectMany(project => project.Sessions).Select(item => item.Session);
+        var incoming = snapshot.Projects.SelectMany(project => project.Sessions);
+        if (previous.SequenceEqual(incoming)) return;
+        var expansion = Projects.ToDictionary(project => project.Cwd, project => project.IsExpanded, StringComparer.OrdinalIgnoreCase);
+        var latestPath = snapshot.Projects.SelectMany(project => project.Sessions).FirstOrDefault()?.SessionPath;
         Projects.Clear();
         foreach (var project in snapshot.Projects)
         {
-            Projects.Add(new ProjectGroupViewModel(project, SelectedSessionPath));
+            var item = new ProjectGroupViewModel(project, SelectedSessionPath) { IsExpanded = expansion.GetValueOrDefault(project.Cwd, true) };
+            foreach (var session in item.Sessions) session.IsLatest = AreSameSessionPath(session.SessionPath, latestPath);
+            Projects.Add(item);
         }
 
         if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle)
         {
             StatusText = $"已加载 {snapshot.SessionCount} 个会话，跳过 {snapshot.SkippedFileCount} 个异常文件";
         }
+    }
+
+    public void RefreshRelativeActivityTimes(DateTimeOffset now)
+    {
+        foreach (var session in Projects.SelectMany(project => project.Sessions)) session.UpdateRelativeActivity(now);
+    }
+
+    internal void PrepareDocumentationDemo()
+    {
+        // Only synthetic conversation content is used for public screenshots.
+        CurrentTitle = "Pi Harbor 使用演示";
+        CurrentCwd = "示例对话 · 左侧真实项目名称与会话标题已遮挡";
+        StatusText = "本地会话自动发现已开启";
+        ModelText = "";
+        Models.Clear();
+        SelectedModel = new ModelOptionViewModel("demo", "model", "模型示例");
+        Models.Add(SelectedModel);
+        var latest = Projects.SelectMany(project => project.Sessions).FirstOrDefault();
+        if (latest is not null) latest.IsCurrent = true;
+        Messages.Clear();
+        Messages.Add(new ChatItemViewModel(ChatItemKind.User, "帮我整理这个项目的改进计划。"));
+        Messages.Add(new ChatItemViewModel(ChatItemKind.Assistant,
+            "## 从本地对话开始\n\nPi Harbor 将本机 Pi 会话按项目集中展示，方便找到最近的工作并继续交流。\n\n" +
+            "- **找回上下文**：查看历史文字、代码与工具结果。\n- **快速输入**：输入 @ 引用文件，输入 / 选择命令或 skill。\n- **图像交流**：粘贴截图，发送前点击缩略图检查。\n\n" +
+            "### 下一步\n\n| 任务 | 状态 |\n| --- | --- |\n| 明确需求 | 已完成 |\n| 检查实现 | 进行中 |\n| 验证结果 | 待开始 |\n\n" +
+            "> 这是公开截图的演示内容，不包含任何私人对话。"));
+        for (var i = 0; i < 8; i++)
+            Messages.Add(new ChatItemViewModel(ChatItemKind.System, $"演示步骤 {i + 1}：记录进展并核对结果，随时回到最新消息。"));
+        InputText = "请结合这张截图，继续完善输入体验。";
     }
 
     private void UpdateCurrentSessionState(string? selectedSessionPath)
@@ -1113,8 +1156,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }
 
-public sealed class ProjectGroupViewModel
+public sealed class ProjectGroupViewModel : ObservableObject
 {
+    private bool _isExpanded = true;
+    public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
     public ProjectGroupViewModel(ProjectGroup project, string? selectedSessionPath = null)
     {
         Cwd = project.Cwd;
@@ -1148,6 +1193,16 @@ public sealed class ModelOptionViewModel(string provider, string id, string name
 public sealed class SessionItemViewModel(SessionSummary session, bool isCurrent = false) : ObservableObject
 {
     private bool _isCurrent = isCurrent;
+    private string _relativeActivityText = RelativeActivityTime.Format(session.LastActivityAt, DateTimeOffset.Now);
+    public bool IsExpanded { get; set; }
+    public bool IsLatest { get; set; }
+    public string RelativeActivityText => _relativeActivityText;
+    public string ActivityToolTip => $"{Title}\n最后活动：{LastActivityAt.ToLocalTime():yyyy-MM-dd HH:mm}";
+    public void UpdateRelativeActivity(DateTimeOffset now)
+    {
+        if (SetProperty(ref _relativeActivityText, RelativeActivityTime.Format(LastActivityAt, now), nameof(RelativeActivityText)))
+            OnPropertyChanged(nameof(ActivityToolTip));
+    }
 
     public SessionSummary Session { get; } = session;
     public string SessionPath => Session.SessionPath;

@@ -1,0 +1,22 @@
+name: Bug report / 问题反馈
+description: 报告可复现的问题，请勿上传凭据或未脱敏的会话。
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: Pi Harbor 版本、pi --version、Windows 版本、安装版或便携版。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 操作步骤、期望结果与实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏截图或日志
+      description: 遮挡项目名称、路径、私人正文和任何凭据。

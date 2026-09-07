@@ -112,6 +112,29 @@
         </Setter>
     </Style>
 
+    <Style x:Key="AccentButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Padding" Value="16,9" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="AccentRoot" Background="{TemplateBinding Background}" CornerRadius="16"
+                            BorderBrush="Transparent" BorderThickness="2">
+                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="AccentRoot" Property="Background" Value="#9087F2" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="AccentRoot" Property="Background" Value="#665BCB" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="AccentRoot" Property="BorderBrush" Value="{StaticResource PrimaryTextBrush}" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="ScrollRepeatButtonStyle" TargetType="RepeatButton">
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Background" Value="Transparent" />
