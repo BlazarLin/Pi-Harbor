@@ -38,6 +38,7 @@ internal static class ApplicationFeatureContractTests
         var viewModelSource = File.ReadAllText(viewModelPath);
 
         AssertEx.Equal("Pi-Harbor", values["AssemblyName"], "可执行程序集必须使用新品牌名");
+        AssertEx.Equal("Pi Harbor — Pi Session Desk", values["AssemblyTitle"], "Windows 文件说明必须同时显示主品牌和副标题");
         AssertEx.Equal("Pi Harbor", values["Product"], "Windows 产品元数据必须使用主品牌");
         AssertEx.True(values["Description"].Contains("Pi Session Desk", StringComparison.Ordinal), "产品描述必须包含副标题");
         AssertEx.Equal("1.2.1", values["Version"], "包版本必须为 1.2.1");

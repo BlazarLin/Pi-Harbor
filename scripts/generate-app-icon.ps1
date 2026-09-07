@@ -1,5 +1,5 @@
 # Created: 2026-09-07
-# Function: Generate the branded multi-size PI-Harness Windows icon.
+# Function: Generate the branded multi-size Pi Harbor Windows icon.
 # Purpose: Keep the application icon deterministic without third-party tools.
 
 param(
@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $repoRoot 'src\PIHarness.App\Assets\PI-Harness.ico'
+    $OutputPath = Join-Path $repoRoot 'src\PIHarness.App\Assets\Pi-Harbor.ico'
 }
 $OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 $outputDirectory = Split-Path -Parent $OutputPath

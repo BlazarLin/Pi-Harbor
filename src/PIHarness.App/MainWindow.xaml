@@ -8,7 +8,7 @@
         xmlns:p="clr-namespace:PIHarness.App.Presentation"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
-        Icon="Assets/PI-Harness.ico"
+        Icon="Assets/Pi-Harbor.ico"
         Width="1280" Height="820"
         MinWidth="960" MinHeight="640"
         Background="{StaticResource WindowBrush}"
@@ -247,9 +247,13 @@
         <Border Grid.Column="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Margin="12,12,12,7">
-                    <StackPanel Orientation="Horizontal" Margin="6,2,0,12">
-                        <TextBlock Text="PI-Harness" FontSize="17" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding AppVersionText}" FontSize="11" Margin="8,5,0,0"
+                    <StackPanel Margin="6,2,0,12">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Pi Harbor" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding AppVersionText}" FontSize="11" Margin="8,5,0,0"
+                                       Foreground="{StaticResource MutedTextBrush}" />
+                        </StackPanel>
+                        <TextBlock Text="Pi Session Desk" FontSize="11" Margin="0,2,0,0"
                                    Foreground="{StaticResource MutedTextBrush}" />
                     </StackPanel>
                     <Button Style="{StaticResource FlatButtonStyle}" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}">
