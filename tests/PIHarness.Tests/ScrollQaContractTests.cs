@@ -19,5 +19,8 @@ internal static class ScrollQaContractTests
         AssertEx.True(source.Contains("--qa-scroll-capture-dir", StringComparison.Ordinal), "必须提供大会话滚动 QA 参数");
         AssertEx.True(source.Contains("StableFrames", StringComparison.Ordinal), "必须比较静置双帧");
         AssertEx.True(source.Contains("StepElapsedMilliseconds", StringComparison.Ordinal), "必须记录每次滚动响应耗时");
+        AssertEx.True(source.Contains("TEST-UI-06", StringComparison.Ordinal), "必须自动验收五个位置的滑块长度稳定性");
+        AssertEx.True(source.Contains("ThumbLength", StringComparison.Ordinal), "每个滚动步骤必须记录滑块长度");
+        AssertEx.True(source.Contains("thumb=", StringComparison.Ordinal), "滚动报告必须输出可复核的滑块长度");
     }
 }

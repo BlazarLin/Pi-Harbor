@@ -55,9 +55,22 @@ internal static class ConversationUiContractTests
         var xaml = File.ReadAllText(SourcePath("MainWindow.xaml"));
         var colors = File.ReadAllText(Path.Combine(Path.GetDirectoryName(SourcePath("MainWindow.xaml"))!, "Themes", "Colors.xaml"));
 
-        AssertEx.True(xaml.Contains("Header.IsCurrent", StringComparison.Ordinal), "树项目必须绑定会话 ViewModel 的持久当前状态");
+        AssertEx.True(xaml.Contains("<DataTrigger Binding=\"{Binding IsCurrent}\" Value=\"True\">", StringComparison.Ordinal), "树项目必须绑定会话 ViewModel 的持久当前状态");
         AssertEx.True(xaml.Contains("CurrentSessionBrush", StringComparison.Ordinal), "当前会话必须使用独立于悬停和普通选择的颜色");
         AssertEx.True(colors.Contains("x:Key=\"CurrentSessionBrush\"", StringComparison.Ordinal), "主题必须定义当前会话画刷");
+    }
+
+    [TestCase("TEST-25A", "滚动条值绑定完整且垂直滑块固定为 56 DIP")]
+    public static void ScrollBarUsesFixedVisualThumbLength()
+    {
+        var colors = File.ReadAllText(Path.Combine(Path.GetDirectoryName(SourcePath("MainWindow.xaml"))!, "Themes", "Colors.xaml"));
+
+        AssertEx.True(colors.Contains("Minimum=\"{TemplateBinding Minimum}\"", StringComparison.Ordinal), "滚动轨道必须绑定最小值");
+        AssertEx.True(colors.Contains("Maximum=\"{TemplateBinding Maximum}\"", StringComparison.Ordinal), "滚动轨道必须绑定最大值");
+        AssertEx.True(colors.Contains("Value=\"{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}\"", StringComparison.Ordinal), "滚动轨道必须双向同步滚动值");
+        AssertEx.True(colors.Contains("ViewportSize=\"NaN\"", StringComparison.Ordinal), "轨道必须禁用按虚拟视口估算滑块长度");
+        AssertEx.True(colors.Contains("Orientation=\"{TemplateBinding Orientation}\"", StringComparison.Ordinal), "滚动轨道必须绑定方向");
+        AssertEx.True(colors.Contains("x:Name=\"PART_Thumb\" Height=\"56\"", StringComparison.Ordinal), "垂直滚动滑块必须使用固定视觉长度");
     }
 
     private static string SourcePath(string fileName) =>

@@ -82,6 +82,37 @@ public partial class MainWindow
         AddStyleResult(results, "TEST-STYLE-01", "无会话模型框显示明确占位", File.Exists(Path.Combine(outputDirectory, "01-no-session.png")));
         AddStyleResult(results, "TEST-STYLE-04", "项目组点击后不保留选中状态", bProjectReady);
         bPassed &= File.Exists(Path.Combine(outputDirectory, "01-no-session.png")) && bProjectReady;
+
+        var currentSession = _viewModel.Projects
+            .SelectMany(project => project.Sessions)
+            .SingleOrDefault(session => session.IsCurrent);
+        var bCurrentSessionReady = currentSession is not null;
+        if (currentSession is not null)
+        {
+            var currentProject = _viewModel.Projects.Single(project => project.Sessions.Contains(currentSession));
+            var nProjectIndex = _viewModel.Projects.IndexOf(currentProject);
+            var currentProjectItem = SessionTree.ItemContainerGenerator.ContainerFromIndex(nProjectIndex) as TreeViewItem;
+            if (currentProjectItem is not null)
+            {
+                currentProjectItem.IsExpanded = true;
+                await SettleStyleLayoutAsync();
+                var nSessionIndex = currentProject.Sessions.IndexOf(currentSession);
+                var currentSessionItem = currentProjectItem.ItemContainerGenerator.ContainerFromIndex(nSessionIndex) as TreeViewItem;
+                var headerBorder = currentSessionItem?.Template.FindName("HeaderBorder", currentSessionItem) as Border;
+                var expectedBrush = FindResource("CurrentSessionBrush") as SolidColorBrush;
+                bCurrentSessionReady = headerBorder?.Background is SolidColorBrush actualBrush &&
+                                       expectedBrush is not null &&
+                                       actualBrush.Color == expectedBrush.Color;
+                CaptureWindow(Path.Combine(outputDirectory, "06-current-session.png"));
+            }
+            else
+            {
+                bCurrentSessionReady = false;
+            }
+        }
+
+        AddStyleResult(results, "TEST-STYLE-06", "当前会话使用独立颜色并在项目操作后保持高亮", bCurrentSessionReady);
+        bPassed &= bCurrentSessionReady;
         File.WriteAllLines(Path.Combine(outputDirectory, "style-qa.txt"), results, Encoding.UTF8);
         return bPassed;
     }

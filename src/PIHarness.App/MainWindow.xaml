@@ -220,7 +220,7 @@
                             <DataTrigger Binding="{Binding IsMouseOver, ElementName=HeaderBorder}" Value="True">
                                 <Setter TargetName="HeaderBorder" Property="Background" Value="{StaticResource HoverBrush}" />
                             </DataTrigger>
-                            <DataTrigger Binding="{Binding Header.IsCurrent, RelativeSource={RelativeSource TemplatedParent}}" Value="True">
+                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                                 <Setter TargetName="HeaderBorder" Property="Background" Value="{StaticResource CurrentSessionBrush}" />
                                 <Setter TargetName="HeaderBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             </DataTrigger>

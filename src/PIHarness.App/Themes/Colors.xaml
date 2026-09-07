@@ -148,12 +148,18 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
                     <Grid Background="Transparent">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <!-- Keep the thumb's desired size independent from the changing virtualized item estimate. -->
+                        <Track x:Name="PART_Track" IsDirectionReversed="True"
+                               Minimum="{TemplateBinding Minimum}"
+                               Maximum="{TemplateBinding Maximum}"
+                               Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                               ViewportSize="NaN"
+                               Orientation="{TemplateBinding Orientation}">
                             <Track.DecreaseRepeatButton>
                                 <RepeatButton Style="{StaticResource ScrollRepeatButtonStyle}" Command="ScrollBar.PageUpCommand" />
                             </Track.DecreaseRepeatButton>
                             <Track.Thumb>
-                                <Thumb Style="{StaticResource ScrollThumbStyle}" />
+                                <Thumb x:Name="PART_Thumb" Height="56" Style="{StaticResource ScrollThumbStyle}" />
                             </Track.Thumb>
                             <Track.IncreaseRepeatButton>
                                 <RepeatButton Style="{StaticResource ScrollRepeatButtonStyle}" Command="ScrollBar.PageDownCommand" />
@@ -165,6 +171,8 @@
                             <Setter Property="Width" Value="Auto" />
                             <Setter Property="Height" Value="10" />
                             <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                            <Setter TargetName="PART_Thumb" Property="Height" Value="Auto" />
+                            <Setter TargetName="PART_Thumb" Property="Width" Value="56" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -366,10 +367,15 @@ public partial class MainWindow : Window
                                downTwo.VerticalOffset > upFour.VerticalOffset;
         var bStablePassed = steps.All(step => step.StableFrames);
         var bResponsivePassed = steps.All(step => step.StepElapsedMilliseconds < 3000);
+        var bThumbMeasurementsValid = steps.All(step => double.IsFinite(step.ThumbLength) && step.ThumbLength > 0);
+        var thumbLengthDelta = bThumbMeasurementsValid
+            ? steps.Max(step => step.ThumbLength) - steps.Min(step => step.ThumbLength)
+            : double.PositiveInfinity;
+        var bThumbLengthPassed = bThumbMeasurementsValid && thumbLengthDelta <= 1;
         var bReturnPassed = _scrollCoordinator.IsFollowingLatest &&
                             ReturnToLatestButton.Visibility == Visibility.Collapsed &&
                             scrollViewer.ScrollableHeight - returned.VerticalOffset <= 1;
-        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed && bReturnPassed;
+        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed && bReturnPassed && bThumbLengthPassed;
 
         var report = new StringBuilder();
         report.AppendLine($"[{(bDirectionPassed ? "通过" : "失败")}] TEST-UI-01：上下滚动方向与目标偏移一致");
@@ -377,12 +383,13 @@ public partial class MainWindow : Window
         report.AppendLine($"[{(bResponsivePassed ? "通过" : "失败")}] TEST-UI-03：每次滚动、布局与双帧捕获均小于 3000 ms");
         report.AppendLine($"[{(bReadingIntentPassed ? "通过" : "失败")}] TEST-UI-04：离开底部后保持历史阅读并显示回到最新入口");
         report.AppendLine($"[{(bReturnPassed ? "通过" : "失败")}] TEST-UI-05：点击回到最新后准确到底并恢复自动跟随");
+        report.AppendLine($"[{(bThumbLengthPassed ? "通过" : "失败")}] TEST-UI-06：五个阅读位置的滚动条滑块长度差值不超过 1 DIP");
         report.AppendLine($"会话显示项：{_viewModel.Messages.Count}；视口高度：{scrollViewer.ViewportHeight:F1}；可滚动高度：{scrollViewer.ScrollableHeight:F1}");
         foreach (var step in steps)
         {
             report.AppendLine(
                 $"{step.Name}: offset={step.VerticalOffset:F1}, elapsed={step.StepElapsedMilliseconds} ms, " +
-                $"stable={step.StableFrames}, sha256={step.FirstFrameHash}");
+                $"stable={step.StableFrames}, thumb={step.ThumbLength:F1} DIP, sha256={step.FirstFrameHash}");
         }
 
         await File.WriteAllTextAsync(
@@ -403,8 +410,7 @@ public partial class MainWindow : Window
         {
             scrollViewer.ScrollToVerticalOffset(targetOffset.Value);
         }
-        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
-        UpdateLayout();
+        await SettleScrollPositionAsync();
 
         var firstPath = Path.Combine(outputDirectory, $"{name}-a.png");
         var secondPath = Path.Combine(outputDirectory, $"{name}-b.png");
@@ -414,13 +420,41 @@ public partial class MainWindow : Window
         UpdateLayout();
         var secondHash = CaptureWindow(secondPath);
         timer.Stop();
+        var thumbLength = GetVerticalThumbLength(scrollViewer);
 
         return new ScrollQaStep(
             name,
             scrollViewer.VerticalOffset,
             timer.ElapsedMilliseconds,
             string.Equals(firstHash, secondHash, StringComparison.Ordinal),
+            thumbLength,
             firstHash);
+    }
+
+    private async Task SettleScrollPositionAsync()
+    {
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
+        UpdateLayout();
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+        UpdateLayout();
+        await Task.Delay(80);
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+        UpdateLayout();
+    }
+
+    private static double GetVerticalThumbLength(ScrollViewer scrollViewer)
+    {
+        var scrollBar = scrollViewer.Template.FindName("PART_VerticalScrollBar", scrollViewer) as ScrollBar;
+        var track = scrollBar?.Template.FindName("PART_Track", scrollBar) as Track;
+        if (track?.Thumb is not Thumb thumb || track.ActualHeight <= 0 || thumb.ActualHeight <= 0)
+        {
+            return double.NaN;
+        }
+
+        var thumbOrigin = thumb.TranslatePoint(new Point(0, 0), track);
+        var visibleTop = Math.Max(0, thumbOrigin.Y);
+        var visibleBottom = Math.Min(track.ActualHeight, thumbOrigin.Y + thumb.ActualHeight);
+        return Math.Max(0, visibleBottom - visibleTop);
     }
 
     private string CaptureWindow(string outputPath)
@@ -505,5 +539,6 @@ public partial class MainWindow : Window
         double VerticalOffset,
         long StepElapsedMilliseconds,
         bool StableFrames,
+        double ThumbLength,
         string FirstFrameHash);
 }

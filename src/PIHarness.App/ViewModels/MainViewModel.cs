@@ -26,7 +26,7 @@ public enum ChatSessionState
 public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 {
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.1.1";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
