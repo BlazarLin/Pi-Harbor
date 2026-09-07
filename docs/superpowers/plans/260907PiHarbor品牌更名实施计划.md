@@ -129,7 +129,7 @@ git commit -m '功能：将应用品牌更名为Pi Harbor'
 - Modify: `scripts/run-tests.ps1`
 - Modify: `tests/PIHarness.Tests/Program.cs`
 - Modify: `README.md`
-- Modify: `docs/260907PI-Harness项目移交说明.md`
+- Move and modify: `docs/260907PI-Harness项目移交说明.md` to `docs/260907PiHarbor项目移交说明.md`
 
 **Interfaces:**
 - Consumes: Task 2 生成的 `Pi-Harbor.exe`。
@@ -180,7 +180,8 @@ Expected: 产品为 `Pi Harbor`，描述包含 `Pi Session Desk`，版本为 `1.
 - [ ] **Step 5: 提交发布与文档节点**
 
 ```powershell
-git add -- scripts/build-release.ps1 scripts/run-tests.ps1 tests/PIHarness.Tests/Program.cs README.md docs/260907PI-Harness项目移交说明.md
+git add -- scripts/build-release.ps1 scripts/run-tests.ps1 tests/PIHarness.Tests/Program.cs README.md docs/260907PiHarbor项目移交说明.md
+git add -u -- docs/260907PI-Harness项目移交说明.md
 git commit -m '发布：交付Pi Harbor 1.2.1品牌版本'
 ```
 

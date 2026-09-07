@@ -1,8 +1,10 @@
-# PI-Harness
+# Pi Harbor
 
-PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫描本机 pi 会话，按项目文件夹组织为两级树，并可在同一界面中新建或继续对话。
+**Pi Session Desk** —— 集中停靠、浏览并继续本机 Pi 会话的桌面港湾。
 
-当前版本：1.2.0。
+Pi Harbor 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫描本机 pi 会话，按项目文件夹组织为两级树，并可在同一界面中新建或继续对话。
+
+当前版本：1.2.1。
 
 ## 功能
 
@@ -34,8 +36,8 @@ PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫�
 
 ## 使用
 
-1. 解压 `PI-Harness-win-x64.zip`。
-2. 运行 `PI-Harness.exe`。
+1. 解压 `Pi-Harbor-win-x64.zip`。
+2. 运行 `Pi-Harbor.exe`。
 3. 点击左侧会话可继续交互。
 4. 点击“新对话”，选择项目文件夹后可创建对话。
 5. 输入框中按 `Ctrl+Enter` 或点击“发送”。
@@ -49,7 +51,7 @@ PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫�
 开发环境需要 .NET 10 SDK。项目无第三方 NuGet 依赖。
 
 ```powershell
-dotnet build .\PI-Harness.sln -c Debug
+dotnet build .\Pi-Harbor.sln -c Debug
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-app-icon.ps1
 ```
@@ -62,13 +64,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 
 产物：
 
-- `artifacts\PI-Harness-win-x64\`
-- `artifacts\PI-Harness-win-x64.zip`
+- `artifacts\Pi-Harbor-win-x64\`
+- `artifacts\Pi-Harbor-win-x64.zip`
 
 真实大会话滚动验收（只读，不发送模型请求）：
 
 ```powershell
-artifacts\PI-Harness-win-x64\PI-Harness.exe `
+artifacts\Pi-Harbor-win-x64\Pi-Harbor.exe `
   --capture-session <session.jsonl> `
   --qa-scroll-capture-dir artifacts\qa\scroll-top10
 ```
@@ -81,7 +83,7 @@ artifacts\PI-Harness-win-x64\PI-Harness.exe `
 - `PIHarness.App`：WPF 界面、聊天状态编排和 Markdown 显示。
 - `PIHarness.Tests`：不依赖第三方测试包的中文验收程序。
 
-PI-Harness 直接启动 `pi --mode rpc --approve`，通过 stdin/stdout 的 UTF-8 JSONL 交互。它不启动本地网络服务，不读取或保存 API Key。
+Pi Harbor 直接启动 `pi --mode rpc --approve`，通过 stdin/stdout 的 UTF-8 JSONL 交互。它不启动本地网络服务，不读取或保存 API Key。
 
 ## 当前边界
 
@@ -92,4 +94,4 @@ PI-Harness 直接启动 `pi --mode rpc --approve`，通过 stdin/stdout 的 UTF-
 - 显示“未找到 pi.cmd”：先在普通终端执行 `pi --version`，确认 npm 全局目录已加入 `PATH`。
 - 项目下没有会话：点击“刷新会话”，并检查 `%USERPROFILE%\.pi\agent\sessions`是否存在 JSONL。
 - 会话无法打开：确认会话记录的项目 `cwd` 仍然存在。
-- 模型错误：PI-Harness 显示 pi 返回的错误，认证与模型修复应在 pi 配置中完成。
+- 模型错误：Pi Harbor 显示 pi 返回的错误，认证与模型修复应在 pi 配置中完成。

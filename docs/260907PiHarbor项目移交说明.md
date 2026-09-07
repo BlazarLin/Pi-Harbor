@@ -1,10 +1,12 @@
-# PI-Harness 项目移交说明
+# Pi Harbor 项目移交说明
 
 - 移交日期：2026-09-07
 - 仓库目录：`G:\Code\PI-Harness`
 - 当前分支：`main`
-- 移交基线：`3f8c033 测试：隔离消息区滚动稳定性验收`
-- 软件版本：`1.2.0`（文件版本 `1.2.0.0`）
+- 移交基线：`main`（以包含本文的最新中文发布提交为准）
+- 产品名称：`Pi Harbor`
+- 功能副标题：`Pi Session Desk`
+- 软件版本：`1.2.1`（文件版本 `1.2.1.0`）
 - 当前结论：既定功能已完成，自动测试、真实大会话滚动验收和 Markdown 视觉验收均通过，可进入交付或后续维护阶段。
 
 ## 1. 接手时先做
@@ -27,7 +29,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 
 ## 2. 当前交付内容
 
-功能、运行要求、使用方式、架构和明确边界统一以 [`README.md`](../README.md) 为准，避免在本说明中复制后产生两份不一致的功能清单。
+`Pi Harbor` 表示集中停靠、浏览并继续本机 Pi 会话的桌面港湾；`Pi Session Desk` 直接说明它是会话桌面客户端。功能、运行要求、使用方式、架构和明确边界统一以 [`README.md`](../README.md) 为准，避免在本说明中复制后产生两份不一致的功能清单。
 
 代码职责：
 
@@ -50,6 +52,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 - 交互样式一致性：[`260907交互样式一致性修复设计.md`](superpowers/specs/260907交互样式一致性修复设计.md)
 - 当前会话高亮与滚动条：[`260907当前会话高亮与滚动条稳定设计.md`](superpowers/specs/260907当前会话高亮与滚动条稳定设计.md)
 - 底部滚动、复制与 Markdown：[`260907底部滚动复制与Markdown可视化设计.md`](superpowers/specs/260907底部滚动复制与Markdown可视化设计.md)
+- Pi Harbor 品牌更名：[`260907PiHarbor品牌更名设计.md`](superpowers/specs/260907PiHarbor品牌更名设计.md)
 
 相应实施步骤位于 `docs/superpowers/plans/`，文件名与上述设计文档一一对应。
 
@@ -62,13 +65,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 
 现有自包含发布包：
 
-- 路径：`artifacts\PI-Harness-win-x64.zip`
-- 大小：63,070,457 字节
-- SHA-256：`0A1708ABA0FA8363DB7CA8533C99553CA690F9BE0E57DE1227ECEA0ADCD56C56`
+- 路径：`artifacts\Pi-Harbor-win-x64.zip`
+- 大小：63,070,994 字节
+- ZIP 条目：402，已确认包含 `Pi-Harbor.exe`、应用 DLL/PDB、runtimeconfig 和 `PIHarness.Core.dll`，且不含旧品牌入口。
+- SHA-256：`AA5EC53269739704B9297D61C6CE2C1E6F188D95DF3FB19B89EBFFA6BD1BFAF0`
 
 真实大会话滚动验收：
 
-- 报告：`artifacts\qa\package-1.2.0-scroll-final\scroll-qa.txt`
+- 报告：`artifacts\qa\pi-harbor-1.2.1-scroll\scroll-qa.txt`
 - 结果：`TEST-UI-01` 至 `TEST-UI-08` 全部通过。
 - 样本显示项：1251。
 - 六个位置静置双帧稳定，固定滑块均为 56 DIP。
@@ -79,15 +83,21 @@ Markdown 视觉证据：
 - 截图：`artifacts\qa\package-1.2.0-markdown.png`
 - 已人工确认暗色主题下标题、列表、粗体、行内代码、代码块、引用、分隔线和表格具有清晰层次，正文可选择复制。
 
+Pi Harbor 品牌视觉证据：
+
+- 空会话截图：`artifacts\qa\pi-harbor-1.2.1-brand.png`
+- 大会话底部截图：`artifacts\qa\pi-harbor-1.2.1-scroll\05-return-to-latest-a.png`
+- 已人工确认主品牌、副标题和版本层级清晰，暗色样式统一，没有挤压操作区或项目树；大会话末条内容底部对齐正常。
+
 注意：`artifacts/` 被 `.gitignore` 排除，不会随 Git 提交传播。移交源码仓库后，应单独复制当前发布包与 QA 证据，或在接手机器上执行 `scripts/build-release.ps1` 重建。重建 ZIP 后哈希和文件时间可能变化，应重新记录校验值。
 
 ## 5. 运行依赖与数据边界
 
 - 用户机器需已全局安装并配置 pi，普通终端执行 `pi --version` 应成功。
 - 发布包已经携带 .NET 运行组件，不要求目标机器另装 .NET，也不依赖 pi-dashboard 或本地网络服务。
-- 会话只从 `%USERPROFILE%\.pi\agent\sessions` 读取；PI-Harness 不读取或保存 API Key。
+- 会话只从 `%USERPROFILE%\.pi\agent\sessions` 读取；Pi Harbor 不读取或保存 API Key。
 - 同一时刻只运行一个 pi 会话。生成期间需等待完成或先停止，才能安全切换会话。
-- 图片附件、会话删除/重命名/导出、分支树编辑和多会话并行生成不属于 1.2.0 范围，详见 README 的“当前边界”。
+- 图片附件、会话删除/重命名/导出、分支树编辑和多会话并行生成不属于 1.2.1 范围，详见 README 的“当前边界”。
 
 ## 6. Git 与变更规范
 

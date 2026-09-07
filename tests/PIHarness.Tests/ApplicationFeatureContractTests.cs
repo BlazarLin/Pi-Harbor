@@ -29,6 +29,7 @@ internal static class ApplicationFeatureContractTests
         var projectPath = Path.Combine(repoRoot, "src", "PIHarness.App", "PIHarness.App.csproj");
         var xamlPath = Path.Combine(repoRoot, "src", "PIHarness.App", "MainWindow.xaml");
         var viewModelPath = Path.Combine(repoRoot, "src", "PIHarness.App", "ViewModels", "MainViewModel.cs");
+        var releaseScriptPath = Path.Combine(repoRoot, "scripts", "build-release.ps1");
         var iconPath = Path.Combine(repoRoot, "src", "PIHarness.App", "Assets", "Pi-Harbor.ico");
         var project = XDocument.Load(projectPath);
         var values = project.Descendants()
@@ -36,6 +37,7 @@ internal static class ApplicationFeatureContractTests
             .ToDictionary(element => element.Name.LocalName, element => element.Value);
         var xaml = File.ReadAllText(xamlPath);
         var viewModelSource = File.ReadAllText(viewModelPath);
+        var releaseScript = File.ReadAllText(releaseScriptPath);
 
         AssertEx.Equal("Pi-Harbor", values["AssemblyName"], "可执行程序集必须使用新品牌名");
         AssertEx.Equal("Pi Harbor — Pi Session Desk", values["AssemblyTitle"], "Windows 文件说明必须同时显示主品牌和副标题");
@@ -52,6 +54,10 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(xaml.Contains("在文件资源管理器中打开", StringComparison.Ordinal), "项目组必须提供右键打开目录入口");
         AssertEx.Equal("1.2.1", MainViewModel.ApplicationVersion, "界面版本必须取自应用程序集");
         AssertEx.True(viewModelSource.Contains("$\"{ProductName} {ApplicationVersion} — {ProductSubtitle}\"", StringComparison.Ordinal), "窗口标题必须同时表达主品牌和副标题");
+        AssertEx.True(releaseScript.Contains("'Pi-Harbor-win-x64'", StringComparison.Ordinal), "发布目录必须使用新品牌名");
+        AssertEx.True(releaseScript.Contains("'Pi-Harbor-win-x64.zip'", StringComparison.Ordinal), "发布压缩包必须使用新品牌名");
+        AssertEx.True(releaseScript.Contains("'Pi-Harbor.exe'", StringComparison.Ordinal), "发布入口必须使用新品牌名");
+        AssertEx.False(releaseScript.Contains("'PI-Harness-win-x64'", StringComparison.Ordinal), "发布脚本不得继续生成旧品牌目录");
     }
 
     [TestCase("TEST-22E", "窗口关闭流程可重入且只执行一次异步回收")]

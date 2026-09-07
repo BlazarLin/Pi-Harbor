@@ -1,15 +1,15 @@
 # Created: 2026-09-06
-# Purpose: Test and publish the self-contained Windows x64 PI-Harness package.
+# Purpose: Test and publish the self-contained Windows x64 Pi Harbor package.
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $artifactsRoot = Join-Path $repoRoot 'artifacts'
-$publishDir = Join-Path $artifactsRoot 'PI-Harness-win-x64'
-$zipPath = Join-Path $artifactsRoot 'PI-Harness-win-x64.zip'
+$publishDir = Join-Path $artifactsRoot 'Pi-Harbor-win-x64'
+$zipPath = Join-Path $artifactsRoot 'Pi-Harbor-win-x64.zip'
 $testScript = Join-Path $PSScriptRoot 'run-tests.ps1'
 $iconScript = Join-Path $PSScriptRoot 'generate-app-icon.ps1'
 $appProject = Join-Path $repoRoot 'src\PIHarness.App\PIHarness.App.csproj'
-$smokeCapture = Join-Path $artifactsRoot 'PI-Harness-release-smoke.png'
+$smokeCapture = Join-Path $artifactsRoot 'Pi-Harbor-release-smoke.png'
 
 function Remove-OwnedPath([string]$targetPath) {
     if (-not (Test-Path -LiteralPath $targetPath)) {
@@ -52,9 +52,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "Publish failed with exit code $LASTEXITCODE"
 }
 
-$mainExecutable = Join-Path $publishDir 'PI-Harness.exe'
+$mainExecutable = Join-Path $publishDir 'Pi-Harbor.exe'
 if (-not (Test-Path -LiteralPath $mainExecutable)) {
-    throw 'PI-Harness.exe was not generated'
+    throw 'Pi-Harbor.exe was not generated'
 }
 
 $smokeProcess = Start-Process -FilePath $mainExecutable `
@@ -63,7 +63,7 @@ $smokeProcess = Start-Process -FilePath $mainExecutable `
     -Wait `
     -PassThru
 if ($smokeProcess.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $smokeCapture)) {
-    throw "PI-Harness startup smoke test failed with exit code $($smokeProcess.ExitCode)"
+    throw "Pi Harbor startup smoke test failed with exit code $($smokeProcess.ExitCode)"
 }
 
 Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipPath -CompressionLevel Optimal

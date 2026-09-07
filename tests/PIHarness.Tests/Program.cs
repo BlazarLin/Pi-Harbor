@@ -1,5 +1,5 @@
 // Created: 2026-09-06
-// Purpose: Run PI-Harness tests without third-party test packages.
+// Purpose: Run Pi Harbor tests without third-party test packages.
 
 using System.Reflection;
 using System.Diagnostics;
