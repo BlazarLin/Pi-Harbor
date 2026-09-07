@@ -24,7 +24,7 @@ git push origin v1.3.1
 5. 在 Actions 查看 Windows Release 成功，再进入 Releases 检查草稿说明与附件，点击 **Publish release**。
 6. 用户即可从 Releases 下载 `Pi-Harbor-Setup-win-x64.exe` 或 `Pi-Harbor-win-x64.zip`；GitHub 自动提供的 Source code ZIP 只是源码，不是可执行包。
 
-以上步骤是维护者操作说明；本轮本地工作不会自动推送标签、公开仓库或发布 Release。参考 [GitHub 标签触发工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)、[gh release create](https://cli.github.com/manual/gh_release_create)。
+以上步骤供维护者后续版本发布使用；v1.3.1 已完成首次云端发布与下载附件验证，见 [首次发布验收](260907GitHub首次发布验收.md)。参考 [GitHub 标签触发工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)、[gh release create](https://cli.github.com/manual/gh_release_create)。
 
 ## 本地打包
 
@@ -45,6 +45,20 @@ Get-FileHash .\Pi-Harbor-Setup-win-x64.exe -Algorithm SHA256
 ```
 
 将输出与 Release 的 `SHA256SUMS.txt` 对照。当前安装器未配置代码签名；有签名证书后应在打包前签署应用、生成安装器后签署安装器，最后生成校验文件。证书和密码只放 GitHub Secrets，不进入仓库。
+
+## 验证实际下载的附件
+
+把 Release 的 EXE、ZIP、SHA256SUMS.txt 下载到同一个目录，执行：
+
+```powershell
+powershell -NoProfile -File scripts/verify-release.ps1 `
+  -AssetDirectory artifacts/downloads `
+  -VerificationDirectory artifacts/qa/release-check `
+  -ExpectedVersion 1.3.1 `
+  -ExpectedCommit <版本标签指向的完整提交号>
+```
+
+脚本核验两份附件的 SHA-256、ZIP 路径与重复条目、应用版本及提交号、自包含运行库和许可文件；随后启动便携版，在独立目录安装、覆盖重装、逐文件比对安装内容、启动安装版并卸载。验证目录必须是 `artifacts/` 下尚不存在的新目录。如果本机已有注册的 Pi Harbor 安装，脚本会停止，以免覆盖它；此时请在另一台测试机执行。报告保存在验证目录的 `verification.txt`。
 
 ## 公开前需完成的事项
 

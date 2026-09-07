@@ -19,7 +19,7 @@
 
 ## 下载与安装
 
-从 [GitHub Releases](https://github.com/BlazarLin/Pi-Harbor/releases) 下载已发布版本；首次 Release 发布前，可按下文从源码构建。
+从 [GitHub Releases](https://github.com/BlazarLin/Pi-Harbor/releases) 下载安装包或便携版；也可按下文从源码构建。
 
 | 文件 | 使用方式 |
 | --- | --- |
