@@ -94,6 +94,20 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(colors.Contains("Value=\"{StaticResource HoverBrush}\"", StringComparison.Ordinal), "菜单悬停必须使用统一 HoverBrush");
     }
 
+    [TestCase("TEST-23D", "发布版可自动捕获关键交互样式状态")]
+    public static void ApplicationProvidesStyleQaEntryPoint()
+    {
+        var windowCode = File.ReadAllText(AppSourcePath("MainWindow.xaml.cs"));
+        var qaCode = File.ReadAllText(AppSourcePath("MainWindow.StyleQa.cs"));
+
+        AssertEx.True(windowCode.Contains("--qa-style-capture-dir", StringComparison.Ordinal), "主窗口必须提供样式验收入口");
+        AssertEx.True(qaCode.Contains("01-no-session.png", StringComparison.Ordinal), "必须捕获无会话模型框");
+        AssertEx.True(qaCode.Contains("02-model-focus.png", StringComparison.Ordinal), "必须捕获模型聚焦状态");
+        AssertEx.True(qaCode.Contains("03-model-dropdown.png", StringComparison.Ordinal), "必须捕获模型下拉状态");
+        AssertEx.True(qaCode.Contains("04-project-not-selected.png", StringComparison.Ordinal), "必须捕获项目取消选中状态");
+        AssertEx.True(qaCode.Contains("05-project-context-menu.png", StringComparison.Ordinal), "必须捕获项目右键菜单");
+    }
+
     private static string AppSourcePath(params string[] parts)
     {
         var pathParts = new[] { Path.GetFullPath(Environment.CurrentDirectory), "src", "PIHarness.App" }.Concat(parts).ToArray();

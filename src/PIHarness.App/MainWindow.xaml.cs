@@ -42,6 +42,12 @@ public partial class MainWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await _viewModel.InitializeAsync();
+        var styleQaDirectory = ReadCommandLineOption("--qa-style-capture-dir");
+        if (!string.IsNullOrWhiteSpace(styleQaDirectory))
+        {
+            await CaptureNoSessionStyleAsync(styleQaDirectory);
+        }
+
         var captureSessionPath = ReadCommandLineOption("--capture-session");
         if (!string.IsNullOrWhiteSpace(captureSessionPath))
         {
@@ -67,6 +73,16 @@ public partial class MainWindow : Window
 
         var capturePath = ReadCommandLineOption("--capture-ui");
         var scrollQaDirectory = ReadCommandLineOption("--qa-scroll-capture-dir");
+        if (!string.IsNullOrWhiteSpace(styleQaDirectory))
+        {
+            var bPassed = await RunStyleQaAsync(styleQaDirectory);
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Environment.ExitCode = bPassed ? 0 : 1;
+            Close();
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(scrollQaDirectory))
         {
             var bPassed = await RunScrollQaAsync(scrollQaDirectory);
@@ -119,10 +135,15 @@ public partial class MainWindow : Window
         var item = FindVisualAncestor<TreeViewItem>(args.OriginalSource as DependencyObject);
         if (item?.Header is ProjectGroupViewModel)
         {
-            item.IsSelected = false;
-            item.IsExpanded = !item.IsExpanded;
+            ToggleProjectItem(item);
             args.Handled = true;
         }
+    }
+
+    private static void ToggleProjectItem(TreeViewItem item)
+    {
+        item.IsSelected = false;
+        item.IsExpanded = !item.IsExpanded;
     }
 
     private async void OnModelSelectionChanged(object sender, SelectionChangedEventArgs args)
