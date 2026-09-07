@@ -10,7 +10,7 @@ namespace PIHarness.Tests;
 
 internal static class ConversationUiContractTests
 {
-    [TestCase("TEST-20A", "详细对话使用稳定虚拟化、相邻页缓存和项目锚点滚动")]
+    [TestCase("TEST-20A", "详细对话使用稳定虚拟化、相邻页缓存和像素连续滚动")]
     public static void MessageListUsesStableVirtualization()
     {
         var document = XDocument.Load(SourcePath("MainWindow.xaml"));
@@ -21,7 +21,11 @@ internal static class ConversationUiContractTests
         AssertEx.Equal("Standard", AttributeValue(list, "VirtualizationMode"), "消息容器不得复用旧 Markdown 视觉树");
         AssertEx.Equal("1", AttributeValue(list, "CacheLength"), "必须提前实现相邻一页消息");
         AssertEx.Equal("Page", AttributeValue(list, "CacheLengthUnit"), "缓存长度单位必须为页");
-        AssertEx.Equal("Item", AttributeValue(list, "ScrollUnit"), "可变高度虚拟消息必须按稳定项目锚点滚动");
+        AssertEx.Equal("Pixel", AttributeValue(list, "ScrollUnit"), "可变高度消息必须支持像素级连续滚动");
+
+        var code = File.ReadAllText(SourcePath("MainWindow.xaml.cs"));
+        AssertEx.True(code.Contains("MessageList.ScrollIntoView", StringComparison.Ordinal), "自动跟随必须先生成最后一条消息");
+        AssertEx.True(code.Contains("scrollViewer.ScrollToEnd()", StringComparison.Ordinal), "自动跟随必须精确对齐内容底边");
     }
 
     [TestCase("TEST-20B", "历史阅读提供回到最新、加载反馈和消息数量")]

@@ -302,13 +302,28 @@ public partial class MainWindow : Window
         }
 
         _pendingScrollOperation = Dispatcher.BeginInvoke(() =>
+            RunScrollToBottomPass(0), DispatcherPriority.Background);
+    }
+
+    private void RunScrollToBottomPass(int nPass)
+    {
+        _pendingScrollOperation = null;
+        if (!_scrollCoordinator.IsFollowingLatest || _viewModel.Messages.Count == 0)
         {
-            _pendingScrollOperation = null;
-            if (_scrollCoordinator.IsFollowingLatest && _viewModel.Messages.Count > 0)
-            {
-                MessageList.ScrollIntoView(_viewModel.Messages[^1]);
-            }
-        }, DispatcherPriority.Background);
+            return;
+        }
+
+        MessageList.ScrollIntoView(_viewModel.Messages[^1]);
+        MessageList.UpdateLayout();
+        var scrollViewer = FindVisualChild<ScrollViewer>(MessageList);
+        scrollViewer?.ScrollToEnd();
+
+        if (nPass < 2)
+        {
+            _pendingScrollOperation = Dispatcher.BeginInvoke(
+                () => RunScrollToBottomPass(nPass + 1),
+                DispatcherPriority.ContextIdle);
+        }
     }
 
     private void EnableDarkTitleBar()
@@ -340,19 +355,18 @@ public partial class MainWindow : Window
         }
 
         MessageList.ScrollIntoView(_viewModel.Messages[^1]);
-        scrollViewer.ScrollToEnd();
-        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
-        UpdateLayout();
+        await SettleLatestPositionAsync(scrollViewer);
         var bottom = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "01-bottom", scrollViewer.ScrollableHeight);
 
         _scrollCoordinator.OnUserWheel(120);
         CancelPendingAutoScroll();
         UpdateReturnToLatestVisibility();
-        var upOneTarget = Math.Max(0, bottom.VerticalOffset - scrollViewer.ViewportHeight);
+        var smallUp = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "02-small-up", Math.Max(0, bottom.VerticalOffset - 24));
+        var upOneTarget = Math.Max(0, smallUp.VerticalOffset - 56);
         var upOne = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "02-up-one-page", upOneTarget);
-        var upFourTarget = Math.Max(0, upOne.VerticalOffset - scrollViewer.ViewportHeight * 4);
+        var upFourTarget = Math.Max(0, upOne.VerticalOffset - 240);
         var upFour = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "03-up-four-pages", upFourTarget);
-        var downTwoTarget = Math.Min(scrollViewer.ScrollableHeight, upFour.VerticalOffset + scrollViewer.ViewportHeight * 2);
+        var downTwoTarget = Math.Min(scrollViewer.ScrollableHeight, upFour.VerticalOffset + 160);
         var downTwo = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "04-down-two-pages", downTwoTarget);
 
         var bReadingIntentPassed = !_scrollCoordinator.IsFollowingLatest &&
@@ -361,10 +375,12 @@ public partial class MainWindow : Window
         await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
         var returned = await CaptureScrollStepAsync(scrollViewer, fullDirectory, "05-return-to-latest", null);
 
-        var steps = new[] { bottom, upOne, upFour, downTwo, returned };
-        var bDirectionPassed = bottom.VerticalOffset > upOne.VerticalOffset &&
-                               upOne.VerticalOffset > upFour.VerticalOffset &&
-                               downTwo.VerticalOffset > upFour.VerticalOffset;
+        var steps = new[] { bottom, smallUp, upOne, upFour, downTwo, returned };
+        var smallScrollDelta = smallUp.BottomGap - bottom.BottomGap;
+        var bDirectionPassed = bottom.BottomGap < smallUp.BottomGap &&
+                               smallUp.BottomGap < upOne.BottomGap &&
+                               upOne.BottomGap < upFour.BottomGap &&
+                               downTwo.BottomGap < upFour.BottomGap;
         var bStablePassed = steps.All(step => step.StableFrames);
         var bResponsivePassed = steps.All(step => step.StepElapsedMilliseconds < 3000);
         var bThumbMeasurementsValid = steps.All(step => double.IsFinite(step.ThumbLength) && step.ThumbLength > 0);
@@ -375,21 +391,27 @@ public partial class MainWindow : Window
         var bReturnPassed = _scrollCoordinator.IsFollowingLatest &&
                             ReturnToLatestButton.Visibility == Visibility.Collapsed &&
                             scrollViewer.ScrollableHeight - returned.VerticalOffset <= 1;
-        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed && bReturnPassed && bThumbLengthPassed;
+        var bBottomGapPassed = returned.BottomGap <= 2;
+        var bSmallScrollPassed = smallScrollDelta is >= 22 and <= 26;
+        var bPassed = bDirectionPassed && bStablePassed && bResponsivePassed && bReadingIntentPassed && bReturnPassed &&
+                      bThumbLengthPassed && bBottomGapPassed && bSmallScrollPassed;
 
         var report = new StringBuilder();
-        report.AppendLine($"[{(bDirectionPassed ? "通过" : "失败")}] TEST-UI-01：上下滚动方向与目标偏移一致");
+        report.AppendLine($"[{(bDirectionPassed ? "通过" : "失败")}] TEST-UI-01：上下滚动方向与内容底边距离一致");
         report.AppendLine($"[{(bStablePassed ? "通过" : "失败")}] TEST-UI-02：每个阅读位置静置双帧完全一致");
         report.AppendLine($"[{(bResponsivePassed ? "通过" : "失败")}] TEST-UI-03：每次滚动、布局与双帧捕获均小于 3000 ms");
         report.AppendLine($"[{(bReadingIntentPassed ? "通过" : "失败")}] TEST-UI-04：离开底部后保持历史阅读并显示回到最新入口");
         report.AppendLine($"[{(bReturnPassed ? "通过" : "失败")}] TEST-UI-05：点击回到最新后准确到底并恢复自动跟随");
-        report.AppendLine($"[{(bThumbLengthPassed ? "通过" : "失败")}] TEST-UI-06：五个阅读位置的滚动条滑块长度差值不超过 1 DIP");
+        report.AppendLine($"[{(bThumbLengthPassed ? "通过" : "失败")}] TEST-UI-06：六个阅读位置的滚动条滑块长度差值不超过 1 DIP");
+        report.AppendLine($"[{(bBottomGapPassed ? "通过" : "失败")}] TEST-UI-07：回到最新后末条内容底边与视口底边差值不超过 2 DIP");
+        report.AppendLine($"[{(bSmallScrollPassed ? "通过" : "失败")}] TEST-UI-08：从底部上移 24 DIP 时保持像素级连续滚动");
+        report.AppendLine($"BottomGap={returned.BottomGap:F1} DIP；SmallScrollDelta={smallScrollDelta:F1} DIP");
         report.AppendLine($"会话显示项：{_viewModel.Messages.Count}；视口高度：{scrollViewer.ViewportHeight:F1}；可滚动高度：{scrollViewer.ScrollableHeight:F1}");
         foreach (var step in steps)
         {
             report.AppendLine(
                 $"{step.Name}: offset={step.VerticalOffset:F1}, elapsed={step.StepElapsedMilliseconds} ms, " +
-                $"stable={step.StableFrames}, thumb={step.ThumbLength:F1} DIP, sha256={step.FirstFrameHash}");
+                $"stable={step.StableFrames}, thumb={step.ThumbLength:F1} DIP, bottomGap={step.BottomGap:F1} DIP, sha256={step.FirstFrameHash}");
         }
 
         await File.WriteAllTextAsync(
@@ -421,6 +443,7 @@ public partial class MainWindow : Window
         var secondHash = CaptureWindow(secondPath);
         timer.Stop();
         var thumbLength = GetVerticalThumbLength(scrollViewer);
+        var bottomGap = GetLastItemBottomGap(scrollViewer);
 
         return new ScrollQaStep(
             name,
@@ -428,7 +451,20 @@ public partial class MainWindow : Window
             timer.ElapsedMilliseconds,
             string.Equals(firstHash, secondHash, StringComparison.Ordinal),
             thumbLength,
+            bottomGap,
             firstHash);
+    }
+
+    private double GetLastItemBottomGap(ScrollViewer scrollViewer)
+    {
+        var nLastIndex = _viewModel.Messages.Count - 1;
+        if (nLastIndex < 0 || MessageList.ItemContainerGenerator.ContainerFromIndex(nLastIndex) is not FrameworkElement lastItem)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var bottom = lastItem.TranslatePoint(new Point(0, lastItem.ActualHeight), scrollViewer).Y;
+        return Math.Abs(scrollViewer.ViewportHeight - bottom);
     }
 
     private async Task SettleScrollPositionAsync()
@@ -440,6 +476,26 @@ public partial class MainWindow : Window
         await Task.Delay(80);
         await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
         UpdateLayout();
+    }
+
+    private async Task SettleLatestPositionAsync(ScrollViewer scrollViewer)
+    {
+        var previousScrollableHeight = double.NaN;
+        for (var nPass = 0; nPass < 6; nPass++)
+        {
+            MessageList.ScrollIntoView(_viewModel.Messages[^1]);
+            MessageList.UpdateLayout();
+            scrollViewer.ScrollToEnd();
+            await SettleScrollPositionAsync();
+
+            var bExtentStable = double.IsFinite(previousScrollableHeight) &&
+                                Math.Abs(previousScrollableHeight - scrollViewer.ScrollableHeight) <= 0.5;
+            if (bExtentStable && GetLastItemBottomGap(scrollViewer) <= 2)
+            {
+                return;
+            }
+            previousScrollableHeight = scrollViewer.ScrollableHeight;
+        }
     }
 
     private static double GetVerticalThumbLength(ScrollViewer scrollViewer)
@@ -540,5 +596,6 @@ public partial class MainWindow : Window
         long StepElapsedMilliseconds,
         bool StableFrames,
         double ThumbLength,
+        double BottomGap,
         string FirstFrameHash);
 }

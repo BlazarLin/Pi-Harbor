@@ -383,7 +383,7 @@
                          VirtualizingStackPanel.VirtualizationMode="Standard"
                          VirtualizingPanel.CacheLength="1"
                          VirtualizingPanel.CacheLengthUnit="Page"
-                         VirtualizingPanel.ScrollUnit="Item"
+                         VirtualizingPanel.ScrollUnit="Pixel"
                          SelectionMode="Single"
                          PreviewMouseWheel="OnMessagePreviewMouseWheel"
                          ScrollViewer.ScrollChanged="OnMessageScrollChanged">

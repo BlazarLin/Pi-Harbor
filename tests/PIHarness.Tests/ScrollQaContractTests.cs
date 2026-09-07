@@ -22,5 +22,9 @@ internal static class ScrollQaContractTests
         AssertEx.True(source.Contains("TEST-UI-06", StringComparison.Ordinal), "必须自动验收五个位置的滑块长度稳定性");
         AssertEx.True(source.Contains("ThumbLength", StringComparison.Ordinal), "每个滚动步骤必须记录滑块长度");
         AssertEx.True(source.Contains("thumb=", StringComparison.Ordinal), "滚动报告必须输出可复核的滑块长度");
+        AssertEx.True(source.Contains("TEST-UI-07", StringComparison.Ordinal), "必须验收最新内容底边对齐");
+        AssertEx.True(source.Contains("TEST-UI-08", StringComparison.Ordinal), "必须验收微量上滑的像素连续性");
+        AssertEx.True(source.Contains("BottomGap", StringComparison.Ordinal), "报告必须记录内容底部空隙");
+        AssertEx.True(source.Contains("SmallScrollDelta", StringComparison.Ordinal), "报告必须记录微量滚动距离");
     }
 }
