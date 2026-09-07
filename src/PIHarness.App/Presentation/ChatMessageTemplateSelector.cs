@@ -23,6 +23,7 @@ public sealed class ChatMessageTemplateSelector : DataTemplateSelector
             ChatItemKind.Assistant => "AssistantMessageTemplate",
             ChatItemKind.Thinking => "ThinkingMessageTemplate",
             ChatItemKind.Tool => "ToolMessageTemplate",
+            ChatItemKind.Metrics => "MetricsMessageTemplate",
             ChatItemKind.Error => "ErrorMessageTemplate",
             _ => "SystemMessageTemplate",
         };

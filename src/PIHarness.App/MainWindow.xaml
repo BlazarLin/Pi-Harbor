@@ -75,6 +75,13 @@
             </Border>
         </DataTemplate>
 
+        <DataTemplate x:Key="MetricsMessageTemplate">
+            <Border Margin="18,2,70,10" Padding="0,2">
+                <TextBlock Text="{Binding Text}" Foreground="{StaticResource MutedTextBrush}"
+                           FontSize="12" TextWrapping="Wrap" />
+            </Border>
+        </DataTemplate>
+
         <DataTemplate x:Key="ErrorMessageTemplate">
             <Border Margin="18,6,70,6" Background="#392525" CornerRadius="6" Padding="11,8">
                 <TextBlock Text="{Binding Text}" Foreground="{StaticResource ErrorBrush}"

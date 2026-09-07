@@ -2,6 +2,7 @@
 // Purpose: Coordinate the local session catalog, one pi RPC process, and chat presentation state.
 
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -30,6 +31,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly SynchronizationContext? _uiContext;
     private readonly Dictionary<int, ChatItemViewModel> _streamItems = new();
     private readonly Dictionary<string, ChatItemViewModel> _toolItems = new(StringComparer.Ordinal);
+    private readonly Stopwatch _turnTimer = new();
     private PiRpcClient? _rpcClient;
     private string _inputText = string.Empty;
     private string _currentTitle = "选择一个会话";
@@ -41,6 +43,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _isLoadingHistory;
     private bool _disposed;
     private bool _shuttingDown;
+    private bool _hasActiveTurn;
+    private TokenUsage _activeTurnUsage;
 
     public MainViewModel(string? sessionRoot = null, Func<PiRpcClient>? rpcClientFactory = null)
     {
@@ -199,6 +203,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SelectedSessionPath = null;
             ModelText = string.Empty;
             IsLoadingHistory = false;
+            ResetActiveTurn();
         }).ConfigureAwait(false);
         await StartRpcAsync(new PiStartOptions(Path.GetFullPath(cwd))).ConfigureAwait(false);
     }
@@ -227,6 +232,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SelectedSessionPath = session.SessionPath;
             ModelText = string.Empty;
             IsLoadingHistory = true;
+            ResetActiveTurn();
         }).ConfigureAwait(false);
         var historyTask = SessionHistoryReader.ReadAsync(session.SessionPath, CancellationToken.None);
         await StartRpcAsync(new PiStartOptions(session.Cwd, session.SessionPath), historyTask).ConfigureAwait(false);
@@ -247,6 +253,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Messages.Add(new ChatItemViewModel(ChatItemKind.User, message));
             _streamItems.Clear();
             _toolItems.Clear();
+            _activeTurnUsage = default;
+            _hasActiveTurn = true;
+            _turnTimer.Restart();
             State = ChatSessionState.Streaming;
         }).ConfigureAwait(false);
 
@@ -256,6 +265,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception exception) when (exception is PiRpcException or IOException)
         {
+            await RunOnUiAsync(CompleteActiveTurn).ConfigureAwait(false);
             await ShowErrorAsync($"发送消息失败：{exception.Message}").ConfigureAwait(false);
         }
     }
@@ -431,6 +441,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 break;
             case "agent_settled":
                 CompleteStreamItems();
+                CompleteActiveTurn();
                 State = ChatSessionState.Ready;
                 break;
             case "message_start":
@@ -507,7 +518,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ApplyMessageEnd(JsonElement payload)
     {
-        if (!payload.TryGetProperty("message", out var message) || ReadString(message, "role") != "assistant")
+        if (!payload.TryGetProperty("message", out var message))
+        {
+            return;
+        }
+
+        _activeTurnUsage += ReadUsage(message);
+        if (ReadString(message, "role") != "assistant")
         {
             return;
         }
@@ -619,6 +636,26 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private void CompleteActiveTurn()
+    {
+        if (!_hasActiveTurn)
+        {
+            return;
+        }
+
+        _turnTimer.Stop();
+        var metrics = new TurnMetrics(_activeTurnUsage, _turnTimer.Elapsed);
+        Messages.Add(new ChatItemViewModel(ChatItemKind.Metrics, metrics.ToDisplayText()));
+        _hasActiveTurn = false;
+    }
+
+    private void ResetActiveTurn()
+    {
+        _turnTimer.Reset();
+        _activeTurnUsage = default;
+        _hasActiveTurn = false;
+    }
+
     private static string ReadContentText(JsonElement container)
     {
         if (!container.TryGetProperty("content", out var content))
@@ -653,6 +690,28 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             ? property.GetString() ?? string.Empty
             : string.Empty;
     }
+
+    private static TokenUsage ReadUsage(JsonElement message)
+    {
+        if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+        {
+            return default;
+        }
+
+        return new TokenUsage(
+            ReadInt64(usage, "input"),
+            ReadInt64(usage, "output"),
+            ReadInt64(usage, "cacheRead"),
+            ReadInt64(usage, "cacheWrite"),
+            ReadInt64(usage, "reasoning"),
+            ReadInt64(usage, "totalTokens"));
+    }
+
+    private static long ReadInt64(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var result)
+            ? result
+            : 0;
 
     private void ReplaceProjects(CatalogSnapshot snapshot)
     {

@@ -59,7 +59,14 @@ public static class SessionHistoryReader
                 }
 
                 var parentId = ReadNullableString(root, "parentId");
-                nodes[id] = new HistoryNode(id, parentId, MapEntry(root));
+                nodes[id] = new HistoryNode(
+                    id,
+                    parentId,
+                    MapEntry(root),
+                    ReadMessageRole(root),
+                    ReadMessageStartedAt(root),
+                    ReadTimestamp(root),
+                    ReadUsage(root));
                 leafId = id;
             }
             catch (JsonException exception)
@@ -84,10 +91,27 @@ public static class SessionHistoryReader
 
         branch.Reverse();
         var items = new List<SessionHistoryItem>(branch.Sum(node => node.Items.Count));
+        TurnAccumulator? turn = null;
         foreach (var node in branch)
         {
+            if (node.Role == "user")
+            {
+                AddTurnMetrics(items, turn);
+                turn = new TurnAccumulator(node.StartedAt ?? node.CompletedAt);
+            }
+
             items.AddRange(node.Items);
+            if (turn is not null)
+            {
+                turn.Usage += node.Usage;
+                if (node.CompletedAt.HasValue)
+                {
+                    turn.CompletedAt = node.CompletedAt;
+                }
+            }
         }
+
+        AddTurnMetrics(items, turn);
 
         return new SessionHistorySnapshot(items, warnings, nodes.Count);
     }
@@ -117,6 +141,23 @@ public static class SessionHistoryReader
         }
 
         return [];
+    }
+
+    private static void AddTurnMetrics(ICollection<SessionHistoryItem> items, TurnAccumulator? turn)
+    {
+        if (turn is null)
+        {
+            return;
+        }
+
+        TimeSpan? duration = null;
+        if (turn.StartedAt.HasValue && turn.CompletedAt >= turn.StartedAt)
+        {
+            duration = turn.CompletedAt - turn.StartedAt;
+        }
+
+        var metrics = new TurnMetrics(turn.Usage, duration);
+        items.Add(new SessionHistoryItem(ChatItemKind.Metrics, metrics.ToDisplayText(), Metrics: metrics));
     }
 
     private static IReadOnlyList<SessionHistoryItem> MapMessage(JsonElement message)
@@ -244,6 +285,73 @@ public static class SessionHistoryReader
             : string.Empty;
     }
 
+    private static string ReadMessageRole(JsonElement entry) =>
+        entry.TryGetProperty("message", out var message) ? ReadString(message, "role") : string.Empty;
+
+    private static DateTimeOffset? ReadMessageStartedAt(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("message", out var message) ||
+            !message.TryGetProperty("timestamp", out var timestamp) ||
+            timestamp.ValueKind != JsonValueKind.Number ||
+            !timestamp.TryGetInt64(out var milliseconds))
+        {
+            return ReadTimestamp(entry);
+        }
+
+        try
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return ReadTimestamp(entry);
+        }
+    }
+
+    private static DateTimeOffset? ReadTimestamp(JsonElement entry)
+    {
+        var value = ReadString(entry, "timestamp");
+        return DateTimeOffset.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out var timestamp)
+            ? timestamp
+            : null;
+    }
+
+    private static TokenUsage ReadUsage(JsonElement entry)
+    {
+        JsonElement usage;
+        if (entry.TryGetProperty("message", out var message) && message.TryGetProperty("usage", out var messageUsage))
+        {
+            usage = messageUsage;
+        }
+        else if (entry.TryGetProperty("usage", out var entryUsage))
+        {
+            usage = entryUsage;
+        }
+        else
+        {
+            return default;
+        }
+
+        return new TokenUsage(
+            ReadInt64(usage, "input"),
+            ReadInt64(usage, "output"),
+            ReadInt64(usage, "cacheRead"),
+            ReadInt64(usage, "cacheWrite"),
+            ReadInt64(usage, "reasoning"),
+            ReadInt64(usage, "totalTokens"));
+    }
+
+    private static long ReadInt64(JsonElement element, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var value)
+            ? value
+            : 0;
+
     private static string? ReadNullableString(JsonElement element, string propertyName)
     {
         if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind == JsonValueKind.Null)
@@ -268,5 +376,19 @@ public static class SessionHistoryReader
         }
     }
 
-    private sealed record HistoryNode(string Id, string? ParentId, IReadOnlyList<SessionHistoryItem> Items);
+    private sealed record HistoryNode(
+        string Id,
+        string? ParentId,
+        IReadOnlyList<SessionHistoryItem> Items,
+        string Role,
+        DateTimeOffset? StartedAt,
+        DateTimeOffset? CompletedAt,
+        TokenUsage Usage);
+
+    private sealed class TurnAccumulator(DateTimeOffset? startedAt)
+    {
+        public DateTimeOffset? StartedAt { get; } = startedAt;
+        public DateTimeOffset? CompletedAt { get; set; } = startedAt;
+        public TokenUsage Usage { get; set; }
+    }
 }

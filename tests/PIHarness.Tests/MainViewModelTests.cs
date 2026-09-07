@@ -55,6 +55,8 @@ internal static class MainViewModelTests
 
         var streamed = viewModel.Messages.Where(item => item.Kind == ChatItemKind.Assistant && item.Text == "流式回复").ToArray();
         AssertEx.Equal(1, streamed.Length, "流式文本应归并为一条最终助手消息");
+        var metrics = viewModel.Messages.Single(item => item.Kind == ChatItemKind.Metrics);
+        AssertEx.True(metrics.Text.Contains("Tokens 350", StringComparison.Ordinal), "实时轮次应在 settled 后显示累计 token");
     }
 
     [TestCase("TEST-09", "思考、工具和工具结果使用正确显示类型")]

@@ -58,4 +58,30 @@ internal static class SessionHistoryReaderTests
         AssertEx.Equal("图片读取完成", snapshot.Items[0].Text, "只保留工具文字摘要");
         AssertEx.True(snapshot.Items[0].Text.Length < 1024, "显示项不得持有图片负载");
     }
+
+    [TestCase("TEST-22A", "多次助手与工具用量归入同一轮并累计耗时与 token")]
+    public static async Task AggregatesPerTurnMetricsAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = directory.WriteSession(
+            "turn-metrics.jsonl",
+            """
+            {"type":"session","version":3,"id":"metrics","timestamp":"2026-09-07T00:00:00Z","cwd":"G:\\Code\\PI-Harness"}
+            {"type":"message","id":"user-1","parentId":null,"timestamp":"2026-09-07T00:00:01Z","message":{"role":"user","content":"第一轮","timestamp":1788739201000}}
+            {"type":"message","id":"assistant-1","parentId":"user-1","timestamp":"2026-09-07T00:00:04Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"tool-1","name":"read","arguments":{}}],"usage":{"input":100,"output":20,"cacheRead":30,"cacheWrite":0,"reasoning":5,"totalTokens":150},"stopReason":"toolUse","timestamp":1788739201100}}
+            {"type":"message","id":"tool-1-result","parentId":"assistant-1","timestamp":"2026-09-07T00:00:06Z","message":{"role":"toolResult","toolCallId":"tool-1","toolName":"read","content":[{"type":"text","text":"结果"}],"usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"reasoning":0,"totalTokens":15},"timestamp":1788739204000}}
+            {"type":"message","id":"assistant-2","parentId":"tool-1-result","timestamp":"2026-09-07T00:00:09Z","message":{"role":"assistant","content":[{"type":"text","text":"完成"}],"usage":{"input":120,"output":50,"cacheRead":15,"cacheWrite":0,"reasoning":8,"totalTokens":185},"stopReason":"stop","timestamp":1788739206000}}
+            {"type":"message","id":"user-2","parentId":"assistant-2","timestamp":"2026-09-07T00:01:00Z","message":{"role":"user","content":"第二轮","timestamp":1788739260000}}
+            {"type":"message","id":"assistant-3","parentId":"user-2","timestamp":"2026-09-07T00:01:02Z","message":{"role":"assistant","content":[{"type":"text","text":"第二轮完成"}],"usage":{"input":20,"output":10,"cacheRead":0,"cacheWrite":0,"reasoning":0,"totalTokens":30},"stopReason":"stop","timestamp":1788739260100}}
+            """);
+
+        var snapshot = await SessionHistoryReader.ReadAsync(path, CancellationToken.None);
+        var metrics = snapshot.Items.Where(item => item.Kind == ChatItemKind.Metrics).ToArray();
+
+        AssertEx.Equal(2, metrics.Length, "两个用户问题必须生成两个独立轮次统计");
+        AssertEx.Equal(350L, metrics[0].Metrics!.TotalTokens, "第一轮必须累计 assistant 与 toolResult 的 token");
+        AssertEx.Equal(TimeSpan.FromSeconds(8), metrics[0].Metrics!.Duration, "第一轮耗时必须从用户开始到最终助手完成");
+        AssertEx.Equal(30L, metrics[1].Metrics!.TotalTokens, "第二轮 token 不得混入第一轮");
+        AssertEx.True(metrics[0].Text.Contains("输入 230", StringComparison.Ordinal), "统计行应显示输入分项");
+    }
 }

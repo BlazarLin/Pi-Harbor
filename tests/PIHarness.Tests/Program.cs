@@ -274,6 +274,15 @@ internal static class Program
                             new { type = "text", text = "流式回复" },
                             new { type = "toolCall", id = "tool-1", name = "read", arguments = new { path = "demo.txt" } },
                         },
+                        usage = new
+                        {
+                            input = 230,
+                            output = 70,
+                            cacheRead = 50,
+                            cacheWrite = 0,
+                            reasoning = 15,
+                            totalTokens = 350,
+                        },
                         stopReason = "stop",
                     },
                 });
