@@ -22,7 +22,7 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(string.IsNullOrEmpty(startInfo.Arguments), "不得拼接可注入的 Arguments 字符串");
     }
 
-    [TestCase("TEST-22D", "软件图标与 1.1.1 版本号进入窗口和程序集")]
+    [TestCase("TEST-22D", "软件图标与 1.2.0 版本号进入窗口和程序集")]
     public static void ApplicationIdentityIsVersionedAndBranded()
     {
         var repoRoot = Path.GetFullPath(Environment.CurrentDirectory);
@@ -35,14 +35,14 @@ internal static class ApplicationFeatureContractTests
             .ToDictionary(element => element.Name.LocalName, element => element.Value);
         var xaml = File.ReadAllText(xamlPath);
 
-        AssertEx.Equal("1.1.1", values["Version"], "包版本必须为 1.1.1");
-        AssertEx.Equal("1.1.1.0", values["FileVersion"], "文件版本必须为 1.1.1.0");
+        AssertEx.Equal("1.2.0", values["Version"], "包版本必须为 1.2.0");
+        AssertEx.Equal("1.2.0.0", values["FileVersion"], "文件版本必须为 1.2.0.0");
         AssertEx.True(values["ApplicationIcon"].EndsWith("PI-Harness.ico", StringComparison.Ordinal), "项目必须嵌入应用图标");
         AssertEx.True(File.Exists(iconPath), "应用图标文件必须存在");
         AssertEx.True(new FileInfo(iconPath).Length > 1024, "应用图标不得为空壳");
         AssertEx.True(xaml.Contains("Icon=\"Assets/PI-Harness.ico\"", StringComparison.Ordinal), "窗口必须显示应用图标");
         AssertEx.True(xaml.Contains("在文件资源管理器中打开", StringComparison.Ordinal), "项目组必须提供右键打开目录入口");
-        AssertEx.Equal("1.1.1", MainViewModel.ApplicationVersion, "界面版本必须取自应用程序集");
+        AssertEx.Equal("1.2.0", MainViewModel.ApplicationVersion, "界面版本必须取自应用程序集");
     }
 
     [TestCase("TEST-22E", "窗口关闭流程可重入且只执行一次异步回收")]
