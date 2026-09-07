@@ -110,6 +110,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnModelSelectionChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (args.AddedItems.Count == 1 && args.AddedItems[0] is ModelOptionViewModel model)
+        {
+            await _viewModel.SelectModelAsync(model);
+        }
+    }
+
     private async void OnClosing(object? sender, CancelEventArgs args)
     {
         if (_shutdownComplete)

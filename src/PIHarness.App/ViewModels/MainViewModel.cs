@@ -17,6 +17,7 @@ public enum ChatSessionState
     Idle,
     Starting,
     Ready,
+    SwitchingModel,
     Streaming,
     Stopping,
     Faulted,
@@ -39,6 +40,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _modelText = "";
     private string _statusText = "就绪";
     private string? _selectedSessionPath;
+    private ModelOptionViewModel? _selectedModel;
     private ChatSessionState _state = ChatSessionState.Idle;
     private bool _isLoadingHistory;
     private bool _disposed;
@@ -61,6 +63,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
+    public ObservableCollection<ModelOptionViewModel> Models { get; } = [];
     public BulkObservableCollection<ChatItemViewModel> Messages { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
@@ -98,6 +101,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         private set => SetProperty(ref _modelText, value);
     }
 
+    public ModelOptionViewModel? SelectedModel
+    {
+        get => _selectedModel;
+        set => SetProperty(ref _selectedModel, value);
+    }
+
     public string StatusText
     {
         get => _statusText;
@@ -125,6 +134,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 ChatSessionState.Idle => "就绪",
                 ChatSessionState.Starting => "正在启动 pi…",
                 ChatSessionState.Ready => "就绪",
+                ChatSessionState.SwitchingModel => "正在切换模型…",
                 ChatSessionState.Streaming => "pi 正在处理…",
                 ChatSessionState.Stopping => "正在停止…",
                 ChatSessionState.Faulted => "发生错误",
@@ -132,6 +142,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             };
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanSwitchSession));
+            OnPropertyChanged(nameof(CanChangeModel));
             OnPropertyChanged(nameof(IsStreaming));
             RefreshCommand.RaiseCanExecuteChanged();
             SendCommand.RaiseCanExecuteChanged();
@@ -141,6 +152,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public bool CanSend => State == ChatSessionState.Ready && !string.IsNullOrWhiteSpace(InputText);
     public bool CanSwitchSession => State is ChatSessionState.Idle or ChatSessionState.Ready or ChatSessionState.Faulted;
+    public bool CanChangeModel => State == ChatSessionState.Ready && Models.Count > 0;
     public bool IsStreaming => State is ChatSessionState.Streaming or ChatSessionState.Stopping;
     public string MessageCountText => Messages.Count == 0 ? "尚无消息" : $"{Messages.Count} 项";
 
@@ -202,6 +214,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             CurrentCwd = Path.GetFullPath(cwd);
             SelectedSessionPath = null;
             ModelText = string.Empty;
+            Models.Clear();
+            SelectedModel = null;
             IsLoadingHistory = false;
             ResetActiveTurn();
         }).ConfigureAwait(false);
@@ -231,6 +245,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             CurrentCwd = session.Cwd;
             SelectedSessionPath = session.SessionPath;
             ModelText = string.Empty;
+            Models.Clear();
+            SelectedModel = null;
             IsLoadingHistory = true;
             ResetActiveTurn();
         }).ConfigureAwait(false);
@@ -290,6 +306,46 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public async Task SelectModelAsync(ModelOptionViewModel? model)
+    {
+        ThrowIfDisposed();
+        if (model is null || !CanChangeModel || _rpcClient is null ||
+            string.Equals(model.Key, ModelText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var previous = SelectedModel;
+        await RunOnUiAsync(() => State = ChatSessionState.SwitchingModel).ConfigureAwait(false);
+        try
+        {
+            var response = await _rpcClient.RequestAsync(
+                "set_model",
+                new Dictionary<string, object?>
+                {
+                    ["provider"] = model.Provider,
+                    ["modelId"] = model.Id,
+                },
+                TimeSpan.FromSeconds(30),
+                CancellationToken.None).ConfigureAwait(false);
+            await RunOnUiAsync(() =>
+            {
+                ApplySelectedModel(response, model);
+                State = ChatSessionState.Ready;
+            }).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is PiRpcException or IOException)
+        {
+            await RunOnUiAsync(() =>
+            {
+                SelectedModel = previous;
+                State = ChatSessionState.Ready;
+                StatusText = $"模型切换失败：{exception.Message}";
+                Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));
+            }).ConfigureAwait(false);
+        }
+    }
+
     public async Task ShutdownAsync()
     {
         if (_shuttingDown)
@@ -333,15 +389,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 null,
                 TimeSpan.FromMinutes(2),
                 CancellationToken.None);
+            var modelsTask = RequestAvailableModelsAsync(client);
             if (historyTask is not null)
             {
                 await ApplyLocalHistoryAsync(historyTask).ConfigureAwait(false);
             }
 
             var stateResponse = await stateTask.ConfigureAwait(false);
+            var modelsResponse = await modelsTask.ConfigureAwait(false);
             await RunOnUiAsync(() =>
             {
                 ApplyStateResponse(stateResponse);
+                ApplyAvailableModels(modelsResponse);
                 State = ChatSessionState.Ready;
             }).ConfigureAwait(false);
         }
@@ -385,6 +444,83 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var id = ReadString(model, "id");
             ModelText = string.IsNullOrWhiteSpace(provider) ? id : $"{provider}/{id}";
         }
+    }
+
+    private static async Task<JsonElement?> RequestAvailableModelsAsync(PiRpcClient client)
+    {
+        try
+        {
+            return await client.RequestAsync(
+                "get_available_models",
+                null,
+                TimeSpan.FromMinutes(2),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is PiRpcException or IOException)
+        {
+            return null;
+        }
+    }
+
+    private void ApplyAvailableModels(JsonElement? response)
+    {
+        Models.Clear();
+        if (response.HasValue && response.Value.TryGetProperty("data", out var data) &&
+            data.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in models.EnumerateArray())
+            {
+                var provider = ReadString(item, "provider");
+                var id = ReadString(item, "id");
+                if (!string.IsNullOrWhiteSpace(provider) && !string.IsNullOrWhiteSpace(id))
+                {
+                    Models.Add(new ModelOptionViewModel(provider, id, ReadString(item, "name")));
+                }
+            }
+        }
+
+        var current = Models.FirstOrDefault(model => string.Equals(model.Key, ModelText, StringComparison.Ordinal));
+        if (current is null && TrySplitModelKey(ModelText, out var fallbackProvider, out var fallbackId))
+        {
+            current = new ModelOptionViewModel(fallbackProvider, fallbackId, string.Empty);
+            Models.Insert(0, current);
+        }
+
+        SelectedModel = current;
+        OnPropertyChanged(nameof(CanChangeModel));
+    }
+
+    private void ApplySelectedModel(JsonElement response, ModelOptionViewModel fallback)
+    {
+        var selected = fallback;
+        if (response.TryGetProperty("data", out var data))
+        {
+            var provider = ReadString(data, "provider");
+            var id = ReadString(data, "id");
+            if (!string.IsNullOrWhiteSpace(provider) && !string.IsNullOrWhiteSpace(id))
+            {
+                selected = Models.FirstOrDefault(model => model.Provider == provider && model.Id == id)
+                    ?? new ModelOptionViewModel(provider, id, ReadString(data, "name"));
+            }
+        }
+
+        SelectedModel = selected;
+        ModelText = selected.Key;
+    }
+
+    private static bool TrySplitModelKey(string key, out string provider, out string id)
+    {
+        var separator = key.IndexOf('/');
+        if (separator > 0 && separator < key.Length - 1)
+        {
+            provider = key[..separator];
+            id = key[(separator + 1)..];
+            return true;
+        }
+
+        provider = string.Empty;
+        id = string.Empty;
+        return false;
     }
 
     private async Task ApplyLocalHistoryAsync(Task<SessionHistorySnapshot> historyTask)
@@ -805,6 +941,15 @@ public sealed class ProjectGroupViewModel
     public string DisplayName { get; }
     public DateTimeOffset LastActivityAt { get; }
     public ObservableCollection<SessionItemViewModel> Sessions { get; }
+}
+
+public sealed class ModelOptionViewModel(string provider, string id, string name)
+{
+    public string Provider { get; } = provider;
+    public string Id { get; } = id;
+    public string Name { get; } = name;
+    public string Key => $"{Provider}/{Id}";
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Key : $"{Name} · {Key}";
 }
 
 public sealed class SessionItemViewModel(SessionSummary session)

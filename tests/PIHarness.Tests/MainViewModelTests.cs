@@ -59,6 +59,28 @@ internal static class MainViewModelTests
         AssertEx.True(metrics.Text.Contains("Tokens 350", StringComparison.Ordinal), "实时轮次应在 settled 后显示累计 token");
     }
 
+    [TestCase("TEST-22B", "会话就绪后列出模型并可显式切换")]
+    public static async Task ListsAndSwitchesModelsAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var commandLog = Path.Combine(directory.Path, "model-commands.log");
+        await using var viewModel = CreateViewModel(directory.Path, out _, commandLog);
+
+        await viewModel.CreateSessionAsync(directory.Path);
+
+        AssertEx.Equal(2, viewModel.Models.Count, "应加载 fake RPC 返回的全部可用模型");
+        AssertEx.Equal("fake/fake-model", viewModel.SelectedModel?.Key, "应选中会话当前模型");
+        AssertEx.True(viewModel.CanChangeModel, "就绪状态应允许切换模型");
+
+        var alternate = viewModel.Models.Single(model => model.Id == "alternate-model");
+        await viewModel.SelectModelAsync(alternate);
+
+        AssertEx.Equal("fake/alternate-model", viewModel.SelectedModel?.Key, "切换成功后应更新选中模型");
+        AssertEx.Equal("fake/alternate-model", viewModel.ModelText, "状态栏应同步当前模型");
+        var commands = await File.ReadAllLinesAsync(commandLog);
+        AssertEx.True(commands.Contains("set_model", StringComparer.Ordinal), "必须向 pi 发送 set_model 命令");
+    }
+
     [TestCase("TEST-09", "思考、工具和工具结果使用正确显示类型")]
     public static async Task MapsRpcEventsToChatItemsAsync()
     {

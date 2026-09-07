@@ -146,6 +146,7 @@ internal static class Program
     private static async Task<int> RunFakeRpcAsync()
     {
         var receivedCommands = new List<string>();
+        var currentModelId = "fake-model";
         Console.Out.WriteLine("[dashboard] fake non-json startup log");
         Console.Out.Flush();
 
@@ -192,7 +193,35 @@ internal static class Program
                         isStreaming = false,
                         sessionId = "fake-session",
                         sessionName = "伪会话",
-                        model = new { id = "fake-model", provider = "fake" },
+                        model = new { id = currentModelId, provider = "fake", name = currentModelId == "fake-model" ? "默认模型" : "备用模型" },
+                    },
+                },
+                "get_available_models" => new
+                {
+                    id,
+                    type = "response",
+                    command,
+                    success = true,
+                    data = new
+                    {
+                        models = new object[]
+                        {
+                            new { id = "fake-model", provider = "fake", name = "默认模型" },
+                            new { id = "alternate-model", provider = "fake", name = "备用模型" },
+                        },
+                    },
+                },
+                "set_model" => new
+                {
+                    id,
+                    type = "response",
+                    command,
+                    success = true,
+                    data = new
+                    {
+                        id = root.TryGetProperty("modelId", out var modelId) ? modelId.GetString() : currentModelId,
+                        provider = root.TryGetProperty("provider", out var provider) ? provider.GetString() : "fake",
+                        name = "备用模型",
                     },
                 },
                 "get_messages" => new
@@ -219,6 +248,11 @@ internal static class Program
                 _ => new { id, type = "response", command, success = true, data = new { } },
             };
             Console.Out.WriteLine(JsonSerializer.Serialize(response));
+
+            if (command == "set_model" && root.TryGetProperty("modelId", out var selectedModelId))
+            {
+                currentModelId = selectedModelId.GetString() ?? currentModelId;
+            }
 
             if (command == "prompt")
             {
