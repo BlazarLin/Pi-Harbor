@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using PIHarness.Core.Models;
 
 namespace PIHarness.Core.Rpc;
 
@@ -171,9 +172,14 @@ public sealed class PiRpcClient : IAsyncDisposable
         RequestAsync(command, null, null, cancellationToken);
 
     public Task<JsonElement> SendPromptAsync(string message, CancellationToken cancellationToken) =>
+        SendPromptAsync(message, [], cancellationToken);
+
+    public Task<JsonElement> SendPromptAsync(string message, IReadOnlyList<PromptImage> images, CancellationToken cancellationToken) =>
         RequestAsync(
             "prompt",
-            new Dictionary<string, object?> { ["message"] = message },
+            images.Count == 0
+                ? new Dictionary<string, object?> { ["message"] = message }
+                : new Dictionary<string, object?> { ["message"] = message, ["images"] = images },
             DefaultRequestTimeout,
             cancellationToken);
 

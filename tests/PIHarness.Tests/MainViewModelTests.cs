@@ -167,7 +167,7 @@ internal static class MainViewModelTests
         AssertEx.True(clients[1].IsRunning, "新客户端应保持运行");
     }
 
-    private static MainViewModel CreateViewModel(
+    internal static MainViewModel CreateViewModel(
         string sessionRoot,
         out List<PiRpcClient> clients,
         string? commandLog = null,

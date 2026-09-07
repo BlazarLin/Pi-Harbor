@@ -180,8 +180,32 @@ internal static class Program
                 return 7;
             }
 
+            if (command == "prompt" && root.GetProperty("message").GetString() == "拒绝发送")
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new { id, type = "response", command, success = false, error = "测试拒绝" }));
+                Console.Out.Flush();
+                continue;
+            }
+            if (command == "prompt" && root.GetProperty("message").GetString() == "验证图片")
+            {
+                var valid = root.TryGetProperty("images", out var images) && images.GetArrayLength() == 1 &&
+                    images[0].GetProperty("type").GetString() == "image" && images[0].GetProperty("mimeType").GetString() == "image/png" &&
+                    images[0].GetProperty("data").GetString() == "aW1hZ2U=";
+                Console.Out.WriteLine(JsonSerializer.Serialize(new { id, type = "response", command, success = valid, error = valid ? "" : "图片协议错误" }));
+                Console.Out.Flush();
+                continue;
+            }
+
             object response = command switch
             {
+                "get_commands" => new
+                {
+                    id, type = "response", command, success = true,
+                    data = new { commands = new[] {
+                        new { name = "skill:review", description = "代码审查", source = "skill" },
+                        new { name = "local-command", description = "本地命令", source = "extension" },
+                    } },
+                },
                 "get_state" => new
                 {
                     id,
@@ -256,6 +280,7 @@ internal static class Program
 
             if (command == "prompt")
             {
+                if (root.GetProperty("message").GetString() == "/local-command") { Console.Out.Flush(); continue; }
                 var promptMessage = root.TryGetProperty("message", out var promptElement)
                     ? promptElement.GetString()
                     : null;

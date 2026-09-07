@@ -9,6 +9,7 @@ using System.Text.Json;
 using PIHarness.Core.Models;
 using PIHarness.Core.Rpc;
 using PIHarness.Core.Sessions;
+using PIHarness.App.Presentation;
 
 namespace PIHarness.App.ViewModels;
 
@@ -28,7 +29,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.2.1";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.3.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
@@ -51,6 +52,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _shuttingDown;
     private bool _hasActiveTurn;
     private TokenUsage _activeTurnUsage;
+    private bool _isSending;
+    private string _draftKey = "initial";
+    private readonly Dictionary<string, (string Text, ImageAttachmentViewModel[] Images)> _drafts = new(StringComparer.OrdinalIgnoreCase);
 
     public MainViewModel(string? sessionRoot = null, Func<PiRpcClient>? rpcClientFactory = null)
     {
@@ -63,16 +67,27 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshCommand = new AsyncRelayCommand(RefreshCatalogAsync, () => State is not ChatSessionState.Starting);
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
         StopCommand = new AsyncRelayCommand(StopAsync, () => State == ChatSessionState.Streaming);
+        ReconnectCommand = new AsyncRelayCommand(ReconnectAsync, () => CanReconnect);
         Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(MessageCountText));
+        Attachments.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanSend));
+            SendCommand.RaiseCanExecuteChanged();
+        };
     }
 
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
     public ObservableCollection<ModelOptionViewModel> Models { get; } = [];
+    public ObservableCollection<ImageAttachmentViewModel> Attachments { get; } = [];
+    public ObservableCollection<ComposerSuggestion> SlashCommands { get; } = [];
+    public string CommandLoadStatus { get; private set; } = "选择会话后加载 Pi 命令与 skills";
+    public bool CanEditComposer => !_isSending;
     public BulkObservableCollection<ChatItemViewModel> Messages { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand SendCommand { get; }
     public AsyncRelayCommand StopCommand { get; }
+    public AsyncRelayCommand ReconnectCommand { get; }
     public string AppVersionText => $"v{ApplicationVersion}";
     public string WindowTitle => $"{ProductName} {ApplicationVersion} — {ProductSubtitle}";
 
@@ -156,16 +171,26 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(CanSwitchSession));
             OnPropertyChanged(nameof(CanChangeModel));
             OnPropertyChanged(nameof(IsStreaming));
+            OnPropertyChanged(nameof(CanReconnect));
+            OnPropertyChanged(nameof(EmptyConversationText));
             RefreshCommand.RaiseCanExecuteChanged();
             SendCommand.RaiseCanExecuteChanged();
             StopCommand.RaiseCanExecuteChanged();
+            ReconnectCommand.RaiseCanExecuteChanged();
         }
     }
 
-    public bool CanSend => State == ChatSessionState.Ready && !string.IsNullOrWhiteSpace(InputText);
-    public bool CanSwitchSession => State is ChatSessionState.Idle or ChatSessionState.Ready or ChatSessionState.Faulted;
-    public bool CanChangeModel => State == ChatSessionState.Ready && Models.Count > 0;
+    public bool CanSend => !_isSending && State == ChatSessionState.Ready && (!string.IsNullOrWhiteSpace(InputText) || Attachments.Count > 0);
+    public bool CanSwitchSession => !_isSending && State is ChatSessionState.Idle or ChatSessionState.Ready or ChatSessionState.Faulted;
+    public bool CanChangeModel => !_isSending && State == ChatSessionState.Ready && Models.Count > 0;
     public bool IsStreaming => State is ChatSessionState.Streaming or ChatSessionState.Stopping;
+    public bool CanReconnect => CanSwitchSession && State == ChatSessionState.Faulted && Directory.Exists(CurrentCwd);
+    public string EmptyConversationText => State switch
+    {
+        ChatSessionState.Ready => "在下方输入消息，开始这个对话",
+        ChatSessionState.Starting => "正在准备对话…",
+        _ => "选择左侧会话，或新建一个对话",
+    };
     public string MessageCountText => Messages.Count == 0 ? "尚无消息" : $"{Messages.Count} 项";
 
     public bool IsLoadingHistory
@@ -218,6 +243,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        await RunOnUiAsync(() =>
+        {
+            State = ChatSessionState.Starting;
+            SwitchDraft("new:" + Path.GetFullPath(cwd));
+        }).ConfigureAwait(false);
         await CloseRpcClientAsync().ConfigureAwait(false);
         await RunOnUiAsync(() =>
         {
@@ -249,6 +279,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        await RunOnUiAsync(() =>
+        {
+            State = ChatSessionState.Starting;
+            SwitchDraft(Path.GetFullPath(session.SessionPath));
+        }).ConfigureAwait(false);
         await CloseRpcClientAsync().ConfigureAwait(false);
         await RunOnUiAsync(() =>
         {
@@ -269,16 +304,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task SendAsync()
     {
         ThrowIfDisposed();
-        if (!CanSend || _rpcClient is null)
+        var client = _rpcClient;
+        if (!CanSend || client is null)
         {
             return;
         }
 
         var message = InputText.Trim();
+        var images = Attachments.ToArray();
+        if (message.Length == 0) message = "请分析这些图片。";
+        var sentItem = new ChatItemViewModel(ChatItemKind.User, message) { Images = images };
         await RunOnUiAsync(() =>
         {
-            InputText = string.Empty;
-            Messages.Add(new ChatItemViewModel(ChatItemKind.User, message));
+            _isSending = true;
+            OnPropertyChanged(nameof(CanEditComposer));
+            Messages.Add(sentItem);
             _streamItems.Clear();
             _toolItems.Clear();
             _activeTurnUsage = default;
@@ -289,13 +329,94 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            await _rpcClient.SendPromptAsync(message, CancellationToken.None).ConfigureAwait(false);
+            await client.SendPromptAsync(message, images.Select(image => image.ToPromptImage()).ToArray(), CancellationToken.None).ConfigureAwait(false);
+            await RunOnUiAsync(() =>
+            {
+                InputText = string.Empty;
+                Attachments.Clear();
+                _drafts.Remove(_draftKey);
+            }).ConfigureAwait(false);
+            // An extension can handle a command without starting an agent turn.
+            if (message.StartsWith('/'))
+            {
+                JsonElement state;
+                try { state = await client.RequestAsync("get_state", CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception exception) when (exception is PiRpcException or IOException or ObjectDisposedException)
+                {
+                    await ShowErrorAsync($"命令已接受，但无法确认运行状态：{exception.Message}。请重新连接会话。").ConfigureAwait(false);
+                    return;
+                }
+                await RunOnUiAsync(() =>
+                {
+                    if (state.TryGetProperty("data", out var data) &&
+                        data.TryGetProperty("isStreaming", out var streaming) && !streaming.GetBoolean() && _hasActiveTurn)
+                    {
+                        ResetActiveTurn();
+                        State = ChatSessionState.Ready;
+                    }
+                }).ConfigureAwait(false);
+            }
         }
-        catch (Exception exception) when (exception is PiRpcException or IOException)
+        catch (Exception exception) when (exception is PiRpcException or IOException or ObjectDisposedException)
         {
-            await RunOnUiAsync(CompleteActiveTurn).ConfigureAwait(false);
-            await ShowErrorAsync($"发送消息失败：{exception.Message}").ConfigureAwait(false);
+            await RunOnUiAsync(() =>
+            {
+                ResetActiveTurn();
+                if (!string.IsNullOrEmpty(InputText) || Attachments.Count > 0) Messages.Remove(sentItem);
+                State = ChatSessionState.Faulted;
+                StatusText = $"发送未确认：{exception.Message}。草稿已保留；重新连接会话核对历史后再发送。";
+                Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));
+            }).ConfigureAwait(false);
         }
+        finally
+        {
+            await RunOnUiAsync(() =>
+            {
+                _isSending = false;
+                OnPropertyChanged(nameof(CanEditComposer));
+                OnPropertyChanged(nameof(CanSend));
+                OnPropertyChanged(nameof(CanSwitchSession));
+                OnPropertyChanged(nameof(CanChangeModel));
+                OnPropertyChanged(nameof(CanReconnect));
+                ReconnectCommand.RaiseCanExecuteChanged();
+                SendCommand.RaiseCanExecuteChanged();
+            }).ConfigureAwait(false);
+        }
+    }
+
+    private void SwitchDraft(string key)
+    {
+        var initialDraft = _draftKey == "initial";
+        var currentDraft = (Text: InputText, Images: Attachments.ToArray());
+        _drafts[_draftKey] = currentDraft;
+        _draftKey = key;
+        var draft = initialDraft ? currentDraft : _drafts.GetValueOrDefault(key);
+        if (initialDraft) _drafts.Remove("initial");
+        InputText = draft.Text ?? string.Empty;
+        Attachments.Clear();
+        foreach (var image in draft.Images ?? []) Attachments.Add(image);
+        SlashCommands.Clear();
+        CommandLoadStatus = "正在加载 Pi 命令与 skills…";
+    }
+
+    public Task ReconnectAsync()
+    {
+        if (!CanReconnect) return Task.CompletedTask;
+        return SelectedSessionPath is { } path
+            ? OpenSessionAsync(new SessionSummary(path, CurrentCwd, CurrentTitle, DateTimeOffset.Now, DateTimeOffset.Now))
+            : CreateSessionAsync(CurrentCwd);
+    }
+
+    public bool AddAttachment(ImageAttachmentViewModel image)
+    {
+        if (!CanEditComposer) return false;
+        if (Attachments.Count >= ImageAttachmentViewModel.MaxImages)
+        {
+            ReportRecoverableError("每条消息最多添加 4 张图片，请移除后再添加。");
+            return false;
+        }
+        Attachments.Add(image);
+        return true;
     }
 
     public async Task StopAsync()
@@ -407,6 +528,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 TimeSpan.FromMinutes(2),
                 CancellationToken.None);
             var modelsTask = RequestAvailableModelsAsync(client);
+            var commandsTask = RequestCommandsAsync(client);
             if (historyTask is not null)
             {
                 await ApplyLocalHistoryAsync(historyTask).ConfigureAwait(false);
@@ -414,10 +536,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
             var stateResponse = await stateTask.ConfigureAwait(false);
             var modelsResponse = await modelsTask.ConfigureAwait(false);
+            var commandsResponse = await commandsTask.ConfigureAwait(false);
             await RunOnUiAsync(() =>
             {
                 ApplyStateResponse(stateResponse);
                 ApplyAvailableModels(modelsResponse);
+                ApplyCommands(commandsResponse);
                 State = ChatSessionState.Ready;
             }).ConfigureAwait(false);
         }
@@ -461,6 +585,36 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var id = ReadString(model, "id");
             ModelText = string.IsNullOrWhiteSpace(provider) ? id : $"{provider}/{id}";
         }
+        var sessionFile = ReadString(data, "sessionFile");
+        if (!string.IsNullOrWhiteSpace(sessionFile) && SelectedSessionPath is null)
+        {
+            SelectedSessionPath = sessionFile;
+            _drafts.Remove(_draftKey);
+            _draftKey = Path.GetFullPath(sessionFile);
+        }
+    }
+
+    private static async Task<JsonElement?> RequestCommandsAsync(PiRpcClient client)
+    {
+        try { return await client.RequestAsync("get_commands", null, TimeSpan.FromSeconds(10), CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception exception) when (exception is PiRpcException or IOException) { return null; }
+    }
+
+    private void ApplyCommands(JsonElement? response)
+    {
+        SlashCommands.Clear();
+        CommandLoadStatus = "当前 Pi 未提供命令；可继续输入文字";
+        if (response is not { } value || !value.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("commands", out var commands) || commands.ValueKind != JsonValueKind.Array) return;
+        foreach (var command in commands.EnumerateArray())
+        {
+            var name = ReadString(command, "name");
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var source = ReadString(command, "source");
+            var category = source == "skill" ? "Skill" : source == "prompt" ? "提示模板" : "扩展命令";
+            SlashCommands.Add(new ComposerSuggestion("/" + name, category + " · " + ReadString(command, "description"), "/" + name + " "));
+        }
+        CommandLoadStatus = SlashCommands.Count == 0 ? "当前会话没有可用的命令或 skills" : "未找到匹配的命令或 skill";
     }
 
     private static async Task<JsonElement?> RequestAvailableModelsAsync(PiRpcClient client)
@@ -1025,6 +1179,7 @@ public sealed class ChatItemViewModel : ObservableObject
     }
 
     public ChatItemKind Kind { get; }
+    public IReadOnlyList<ImageAttachmentViewModel> Images { get; init; } = [];
 
     public string Text
     {

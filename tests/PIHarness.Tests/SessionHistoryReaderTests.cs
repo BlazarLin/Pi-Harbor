@@ -31,7 +31,7 @@ internal static class SessionHistoryReaderTests
 
         AssertEx.Equal(1, snapshot.Warnings.Count, "损坏行应被隔离并记录");
         AssertEx.True(snapshot.Items.Any(item => item.Kind == ChatItemKind.User && item.Text == "根问题"), "应保留活动分支根问题");
-        AssertEx.True(snapshot.Items.Any(item => item.Kind == ChatItemKind.User && item.Text == "活动分支问题"), "应保留活动分支问题");
+        AssertEx.True(snapshot.Items.Any(item => item.Kind == ChatItemKind.User && item.Text == "活动分支问题" + Environment.NewLine + "[图片附件：历史视图暂不加载原图]"), "应保留活动分支问题与轻量图片提示");
         AssertEx.True(snapshot.Items.Any(item => item.Kind == ChatItemKind.Assistant && item.Text == "活动回答"), "应保留活动分支回答");
         AssertEx.True(snapshot.Items.Any(item => item.Kind == ChatItemKind.Thinking && item.Text == "活动思考"), "应保留思考内容");
         AssertEx.True(snapshot.Items.Any(item => item.Kind == ChatItemKind.Tool && item.Text == "工具文字"), "应保留工具文字");

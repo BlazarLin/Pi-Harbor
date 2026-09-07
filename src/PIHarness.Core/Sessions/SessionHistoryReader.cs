@@ -167,7 +167,7 @@ public static class SessionHistoryReader
         switch (role)
         {
             case "user":
-                AddIfNotEmpty(result, ChatItemKind.User, ReadContentText(message));
+                AddIfNotEmpty(result, ChatItemKind.User, ReadContentText(message, includeImagePlaceholder: true));
                 break;
             case "assistant":
                 if (message.TryGetProperty("content", out var assistantContent) && assistantContent.ValueKind == JsonValueKind.Array)
@@ -230,7 +230,7 @@ public static class SessionHistoryReader
         return result;
     }
 
-    private static string ReadContentText(JsonElement container)
+    private static string ReadContentText(JsonElement container, bool includeImagePlaceholder = false)
     {
         if (!container.TryGetProperty("content", out var content))
         {
@@ -250,6 +250,11 @@ public static class SessionHistoryReader
         var textParts = new List<string>();
         foreach (var part in content.EnumerateArray())
         {
+            if (includeImagePlaceholder && ReadString(part, "type") == "image")
+            {
+                textParts.Add("[图片附件：历史视图暂不加载原图]");
+                continue;
+            }
             if (ReadString(part, "type") != "text")
             {
                 continue;

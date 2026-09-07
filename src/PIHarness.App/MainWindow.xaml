@@ -90,9 +90,22 @@
                 <Border MaxWidth="760" HorizontalAlignment="Right"
                         Background="{StaticResource UserBubbleBrush}"
                         CornerRadius="9" Padding="14,10">
+                    <StackPanel>
                     <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource PrimaryTextBrush}"
                                          FontSize="14" />
+                    <ItemsControl ItemsSource="{Binding Images}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Click="OnPreviewImageClick" Tag="{Binding}" ToolTip="{Binding Detail}"
+                                        Style="{StaticResource FlatButtonStyle}" Margin="0,8,8,0" Padding="3">
+                                    <Image Source="{Binding Preview}" Width="120" Height="80" Stretch="Uniform" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    </StackPanel>
                 </Border>
             </Grid>
         </DataTemplate>
@@ -363,7 +376,7 @@
             </Border>
 
             <Grid Grid.Row="1">
-                <TextBlock Text="选择左侧会话，或新建一个对话"
+                <TextBlock Text="{Binding EmptyConversationText}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedTextBrush}" FontSize="15">
                     <TextBlock.Style>
@@ -429,8 +442,60 @@
                         Cursor="Hand" />
             </Grid>
 
-            <Border Grid.Row="2" Margin="18,10,18,18" Background="{StaticResource PanelBrush}"
+            <Border x:Name="ComposerBorder" Grid.Row="2" Margin="18,10,18,18" Background="{StaticResource PanelBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,8">
+                <StackPanel>
+                    <Border x:Name="CompletionPanel" Visibility="Collapsed" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,5">
+                        <StackPanel>
+                            <TextBlock x:Name="CompletionHint" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="4,2,4,5" />
+                            <ListBox x:Name="CompletionList" MaxHeight="160" Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource PrimaryTextBrush}" Focusable="False"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" PreviewMouseLeftButtonUp="OnCompletionClick">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Template">
+                                            <Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="Row" Padding="7,5" CornerRadius="5" Background="Transparent"><ContentPresenter /></Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource HoverBrush}" /></Trigger>
+                                                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource SelectedBrush}" /></Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate></Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate><DataTemplate><StackPanel>
+                                    <TextBlock Text="{Binding Label}" Foreground="{StaticResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Description}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                </StackPanel></DataTemplate></ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Attachments}" IsEnabled="{Binding CanEditComposer}">
+                        <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><ItemsPresenter /></ScrollViewer>
+                        </ControlTemplate></ItemsControl.Template>
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate><DataTemplate>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Margin="0,0,8,8" Padding="4">
+                                <StackPanel Width="115">
+                                    <Button Click="OnPreviewImageClick" Tag="{Binding}" ToolTip="{Binding Detail}"
+                                            Style="{StaticResource FlatButtonStyle}" Padding="0">
+                                        <Image Source="{Binding Preview}" Width="110" Height="64" Stretch="Uniform" />
+                                    </Button>
+                                    <DockPanel Margin="0,3,0,0">
+                                        <Button DockPanel.Dock="Right" Content="×" Click="OnRemoveImageClick" Tag="{Binding}"
+                                                ToolTip="移除图片" AutomationProperties.Name="移除图片" Style="{StaticResource FlatButtonStyle}" Padding="5,0" />
+                                        <TextBlock Text="{Binding Name}" ToolTip="{Binding Detail}" Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="11" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -438,6 +503,10 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="PromptBox" Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
+                             CaretBrush="{StaticResource PrimaryTextBrush}" SelectionBrush="{StaticResource AccentBrush}"
+                             IsEnabled="{Binding CanEditComposer}" AutomationProperties.Name="对话输入框"
+                             PreviewKeyDown="OnPromptPreviewKeyDown" SelectionChanged="OnPromptSelectionChanged"
+                             DataObject.Pasting="OnPromptPasting"
                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" MaxHeight="170"
                              VerticalScrollBarVisibility="Auto" Background="Transparent"
                              Foreground="{StaticResource PrimaryTextBrush}" BorderThickness="0"
@@ -446,6 +515,13 @@
                             <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding SendCommand}" />
                         </TextBox.InputBindings>
                     </TextBox>
+                    <TextBlock IsHitTestVisible="False" Text="输入消息，@ 引用文件，/ 选择命令或 skill" Margin="3,5"
+                               Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap">
+                        <TextBlock.Style><Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers><DataTrigger Binding="{Binding InputText}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                        </Style></TextBlock.Style>
+                    </TextBlock>
                     <Button Grid.Column="1" Content="停止" Command="{Binding StopCommand}"
                             Style="{StaticResource FlatButtonStyle}" Margin="6,1" VerticalAlignment="Bottom"
                             Visibility="{Binding IsStreaming, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -453,6 +529,16 @@
                             Style="{StaticResource FlatButtonStyle}" Background="{StaticResource AccentBrush}"
                             Margin="3,1" VerticalAlignment="Bottom" HorizontalContentAlignment="Center" />
                 </Grid>
+                <DockPanel Margin="0,6,0,0">
+                    <Button DockPanel.Dock="Left" Content="重新连接" Command="{Binding ReconnectCommand}"
+                            Visibility="{Binding CanReconnect, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Style="{StaticResource FlatButtonStyle}" Padding="5,2" Margin="0,0,8,0" ToolTip="重新读取会话，保留草稿；核对历史后可再次发送" />
+                    <Button DockPanel.Dock="Left" Content="＋ 图片" Click="OnAttachImageClick" IsEnabled="{Binding CanEditComposer}"
+                            Style="{StaticResource FlatButtonStyle}" Padding="5,2" ToolTip="添加图片，也可 Ctrl+V 粘贴；最多 4 张，每张 10 MB" />
+                    <TextBlock Text="Enter 换行 · Ctrl+Enter 发送 · Ctrl+V 粘贴图片" Foreground="{StaticResource MutedTextBrush}"
+                               FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </DockPanel>
+                </StackPanel>
             </Border>
         </Grid>
     </Grid>

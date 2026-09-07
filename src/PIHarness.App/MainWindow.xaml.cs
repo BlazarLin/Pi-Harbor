@@ -20,12 +20,13 @@ using Microsoft.Win32;
 using PIHarness.App.ViewModels;
 using PIHarness.App.Presentation;
 using PIHarness.Core.Sessions;
+using PIHarness.Core.Rpc;
 
 namespace PIHarness.App;
 
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel _viewModel = new();
+    private readonly MainViewModel _viewModel;
     private readonly HashSet<ChatItemViewModel> _subscribedMessages = [];
     private readonly ChatScrollCoordinator _scrollCoordinator = new(1);
     private DispatcherOperation? _pendingScrollOperation;
@@ -34,8 +35,13 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _viewModel = ReadCommandLineOption("--qa-composer-capture-dir") is null
+            ? new MainViewModel()
+            : new MainViewModel(rpcClientFactory: () => new PiRpcClient(options =>
+                PiProcessLocator.CreateStartInfo(PiProcessLocator.Find().PiCommandPath!, options with { NoSession = true, Offline = true })));
         InitializeComponent();
         DataContext = _viewModel;
+        InitializeComposer();
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
         SourceInitialized += (_, _) => EnableDarkTitleBar();
     }
@@ -43,6 +49,16 @@ public partial class MainWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await _viewModel.InitializeAsync();
+        var composerQaDirectory = ReadCommandLineOption("--qa-composer-capture-dir");
+        if (!string.IsNullOrWhiteSpace(composerQaDirectory))
+        {
+            var passed = await RunComposerQaAsync(composerQaDirectory);
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Environment.ExitCode = passed ? 0 : 1;
+            Close();
+            return;
+        }
         var styleQaDirectory = ReadCommandLineOption("--qa-style-capture-dir");
         if (!string.IsNullOrWhiteSpace(styleQaDirectory))
         {
@@ -128,6 +144,7 @@ public partial class MainWindow : Window
         {
             PromptBox.Focus();
             await _viewModel.OpenSessionAsync(sessionItem.Session);
+            PromptBox.Focus();
         }
     }
 
@@ -192,6 +209,7 @@ public partial class MainWindow : Window
         }
 
         _shutdownStarted = true;
+        _completionCts?.Cancel();
         IsEnabled = false;
         await _viewModel.ShutdownAsync();
         _shutdownComplete = true;
