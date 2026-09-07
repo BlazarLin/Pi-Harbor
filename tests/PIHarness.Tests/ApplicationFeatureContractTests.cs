@@ -57,4 +57,46 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(code.Contains("if (_shutdownStarted)", StringComparison.Ordinal), "重复 Closing 必须在异步等待前被拦截");
         AssertEx.True(code.Contains("_shutdownStarted = true;", StringComparison.Ordinal), "首次 Closing 必须同步登记关闭状态");
     }
+
+    [TestCase("TEST-23A", "模型选择框在空闲悬停与聚焦状态保持统一暗色")]
+    public static void ModelSelectorOwnsEveryVisualState()
+    {
+        var xaml = File.ReadAllText(AppSourcePath("MainWindow.xaml"));
+
+        AssertEx.True(xaml.Contains("TargetNullValue=选择会话后可切换模型", StringComparison.Ordinal), "无会话时必须显示明确占位文字");
+        AssertEx.True(xaml.Contains("<ControlTemplate TargetType=\"ToggleButton\">", StringComparison.Ordinal), "模型框内部按钮必须移除系统默认皮肤");
+        AssertEx.True(xaml.Contains("Property=\"IsKeyboardFocusWithin\"", StringComparison.Ordinal), "键盘或鼠标聚焦必须使用显式主题状态");
+        AssertEx.True(xaml.Contains("Property=\"IsDropDownOpen\"", StringComparison.Ordinal), "展开状态必须使用显式主题状态");
+    }
+
+    [TestCase("TEST-23B", "项目悬停只作用于标题且项目组不会进入选中态")]
+    public static void ProjectTreeSeparatesParentAndChildHover()
+    {
+        var xaml = File.ReadAllText(AppSourcePath("MainWindow.xaml"));
+        var code = File.ReadAllText(AppSourcePath("MainWindow.xaml.cs"));
+        var treeStyle = xaml[xaml.IndexOf("<Style TargetType=\"TreeViewItem\">", StringComparison.Ordinal)..];
+
+        AssertEx.True(xaml.Contains("Binding=\"{Binding IsMouseOver, ElementName=HeaderBorder}\"", StringComparison.Ordinal), "悬停背景必须仅观察当前标题区域");
+        AssertEx.False(treeStyle.Contains("<Trigger Property=\"IsMouseOver\" Value=\"True\">", StringComparison.Ordinal), "TreeViewItem 不得由包含子项的 IsMouseOver 驱动背景");
+        AssertEx.True(xaml.Contains("PreviewMouseLeftButtonDown=\"OnTreeItemPreviewMouseLeftButtonDown\"", StringComparison.Ordinal), "项目点击必须由专用入口拦截");
+        AssertEx.True(code.Contains("Header is ProjectGroupViewModel", StringComparison.Ordinal), "只允许拦截项目组，不能影响会话选择");
+        AssertEx.True(code.Contains("args.Handled = true;", StringComparison.Ordinal), "项目组点击必须阻止进入选中态");
+    }
+
+    [TestCase("TEST-23C", "项目右键菜单使用统一暗色模板")]
+    public static void ProjectContextMenuUsesDarkTheme()
+    {
+        var colors = File.ReadAllText(AppSourcePath("Themes", "Colors.xaml"));
+
+        AssertEx.True(colors.Contains("<Style TargetType=\"ContextMenu\">", StringComparison.Ordinal), "ContextMenu 必须有暗色全局样式");
+        AssertEx.True(colors.Contains("<Style TargetType=\"MenuItem\">", StringComparison.Ordinal), "MenuItem 必须有暗色全局样式");
+        AssertEx.True(colors.Contains("Background=\"{StaticResource PanelBrush}\"", StringComparison.Ordinal), "菜单背景必须使用主题面板色");
+        AssertEx.True(colors.Contains("Value=\"{StaticResource HoverBrush}\"", StringComparison.Ordinal), "菜单悬停必须使用统一 HoverBrush");
+    }
+
+    private static string AppSourcePath(params string[] parts)
+    {
+        var pathParts = new[] { Path.GetFullPath(Environment.CurrentDirectory), "src", "PIHarness.App" }.Concat(parts).ToArray();
+        return Path.Combine(pathParts);
+    }
 }

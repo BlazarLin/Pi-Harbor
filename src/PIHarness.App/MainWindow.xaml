@@ -33,6 +33,11 @@
                             <ToggleButton Focusable="False"
                                           IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
                                           ClickMode="Press" Background="Transparent" BorderThickness="0">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
                                 <Border x:Name="SelectorBorder" Background="{TemplateBinding Background}"
                                         BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="5">
                                     <Grid Margin="{TemplateBinding Padding}">
@@ -40,7 +45,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="18" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding SelectedItem.DisplayName, RelativeSource={RelativeSource TemplatedParent}}"
+                                        <TextBlock Text="{Binding SelectedItem.DisplayName, RelativeSource={RelativeSource TemplatedParent}, TargetNullValue=选择会话后可切换模型, FallbackValue=选择会话后可切换模型}"
                                                    Foreground="{TemplateBinding Foreground}"
                                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1" Text="⌄" Foreground="{StaticResource SecondaryTextBrush}"
@@ -63,6 +68,13 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="SelectorBorder" Property="Background" Value="{StaticResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="SelectorBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="SelectorBorder" Property="Background" Value="{StaticResource SelectedBrush}" />
+                                <Setter TargetName="SelectorBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
@@ -204,9 +216,9 @@
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="HeaderBorder" Property="Background" Value="{StaticResource SelectedBrush}" />
                             </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=HeaderBorder}" Value="True">
                                 <Setter TargetName="HeaderBorder" Property="Background" Value="{StaticResource HoverBrush}" />
-                            </Trigger>
+                            </DataTrigger>
                             <Trigger Property="IsExpanded" Value="False">
                                 <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
                             </Trigger>
@@ -263,6 +275,7 @@
                 <TreeView x:Name="SessionTree" ItemsSource="{Binding Projects}"
                           IsHitTestVisible="{Binding CanSwitchSession}"
                           SelectedItemChanged="OnSessionSelected"
+                          PreviewMouseLeftButtonDown="OnTreeItemPreviewMouseLeftButtonDown"
                           Background="Transparent" BorderThickness="0"
                           Padding="8,0,8,8" Foreground="{StaticResource PrimaryTextBrush}"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"

@@ -114,6 +114,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnTreeItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs args)
+    {
+        var item = FindVisualAncestor<TreeViewItem>(args.OriginalSource as DependencyObject);
+        if (item?.Header is ProjectGroupViewModel)
+        {
+            item.IsSelected = false;
+            item.IsExpanded = !item.IsExpanded;
+            args.Handled = true;
+        }
+    }
+
     private async void OnModelSelectionChanged(object sender, SelectionChangedEventArgs args)
     {
         if (args.AddedItems.Count == 1 && args.AddedItems[0] is ModelOptionViewModel model)
@@ -430,6 +441,22 @@ public partial class MainWindow : Window
             {
                 return descendant;
             }
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualAncestor<T>(DependencyObject? child) where T : DependencyObject
+    {
+        var current = child;
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
         }
 
         return null;
