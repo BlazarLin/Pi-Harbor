@@ -7,7 +7,9 @@ $artifactsRoot = Join-Path $repoRoot 'artifacts'
 $publishDir = Join-Path $artifactsRoot 'PI-Harness-win-x64'
 $zipPath = Join-Path $artifactsRoot 'PI-Harness-win-x64.zip'
 $testScript = Join-Path $PSScriptRoot 'run-tests.ps1'
+$iconScript = Join-Path $PSScriptRoot 'generate-app-icon.ps1'
 $appProject = Join-Path $repoRoot 'src\PIHarness.App\PIHarness.App.csproj'
+$smokeCapture = Join-Path $artifactsRoot 'PI-Harness-release-smoke.png'
 
 function Remove-OwnedPath([string]$targetPath) {
     if (-not (Test-Path -LiteralPath $targetPath)) {
@@ -23,6 +25,11 @@ function Remove-OwnedPath([string]$targetPath) {
     Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
 }
 
+powershell -NoProfile -ExecutionPolicy Bypass -File $iconScript
+if ($LASTEXITCODE -ne 0) {
+    throw "Icon generation failed with exit code $LASTEXITCODE"
+}
+
 powershell -NoProfile -ExecutionPolicy Bypass -File $testScript
 if ($LASTEXITCODE -ne 0) {
     throw "Tests failed with exit code $LASTEXITCODE"
@@ -31,6 +38,7 @@ if ($LASTEXITCODE -ne 0) {
 New-Item -ItemType Directory -Path $artifactsRoot -Force | Out-Null
 Remove-OwnedPath $publishDir
 Remove-OwnedPath $zipPath
+Remove-OwnedPath $smokeCapture
 
 dotnet publish $appProject `
     -c Release `
@@ -47,6 +55,15 @@ if ($LASTEXITCODE -ne 0) {
 $mainExecutable = Join-Path $publishDir 'PI-Harness.exe'
 if (-not (Test-Path -LiteralPath $mainExecutable)) {
     throw 'PI-Harness.exe was not generated'
+}
+
+$smokeProcess = Start-Process -FilePath $mainExecutable `
+    -ArgumentList @('--capture-ui', $smokeCapture) `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+if ($smokeProcess.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $smokeCapture)) {
+    throw "PI-Harness startup smoke test failed with exit code $($smokeProcess.ExitCode)"
 }
 
 Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipPath -CompressionLevel Optimal

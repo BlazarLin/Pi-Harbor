@@ -2,6 +2,8 @@
 
 PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫描本机 pi 会话，按项目文件夹组织为两级树，并可在同一界面中新建或继续对话。
 
+当前版本：1.1.0。
+
 ## 功能
 
 - 自动扫描 `%USERPROFILE%\.pi\agent\sessions`。
@@ -11,6 +13,9 @@ PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫�
 - 加载已有会话的当前有效分支并继续交互。
 - 大型会话直接读取轻量文字历史，跳过图片 Base64，并在后台等待 pi 完整上下文就绪。
 - 流式显示助手文本，折叠显示思考与工具调用。
+- 每轮结束后显示该轮耗时、输入/输出/缓存 Token 与总 Token。
+- 会话空闲时可从标题栏选择并切换 pi 已配置的模型。
+- 右键项目目录可在 Windows 文件资源管理器中直接打开。
 - 大会话按像素稳定滚动；离开底部后不会被新布局拉回，并可点击“回到最新”。
 - 历史 Markdown 同步布局，思考与工具展开状态在滚出视口后仍保留。
 - 支持常用 Markdown 标题、列表、粗体、行内代码和代码块。
@@ -32,6 +37,8 @@ PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫�
 3. 点击左侧会话可继续交互。
 4. 点击“新对话”，选择项目文件夹后可创建对话。
 5. 输入框中按 `Ctrl+Enter` 或点击“发送”。
+6. 在右上角模型下拉框切换当前会话模型；生成期间会自动禁用。
+7. 右键左侧项目名称，选择“在文件资源管理器中打开”。
 
 同一时刻只运行一个 pi 会话。pi 正在生成时，需要等待完成或先点击“停止”，才能切换会话。
 
@@ -42,6 +49,7 @@ PI-Harness 是一款 Windows 桌面端 pi 会话管理工具。它会自动扫�
 ```powershell
 dotnet build .\PI-Harness.sln -c Debug
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-app-icon.ps1
 ```
 
 构建自包含 Release 发布包：
@@ -75,7 +83,7 @@ PI-Harness 直接启动 `pi --mode rpc --approve`，通过 stdin/stdout 的 UTF-
 
 ## 当前边界
 
-第一版不包含图片附件、模型切换、会话删除/重命名/导出、分支树编辑和多会话并行生成。
+当前不包含图片附件、会话删除/重命名/导出、分支树编辑和多会话并行生成。
 
 ## 排查
 

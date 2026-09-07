@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly ChatScrollCoordinator _scrollCoordinator = new(1);
     private DispatcherOperation? _pendingScrollOperation;
     private bool _shutdownComplete;
+    private bool _shutdownStarted;
 
     public MainWindow()
     {
@@ -79,7 +80,10 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(capturePath))
         {
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
-            await Task.Delay(100);
+            await Task.Delay(350);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+            UpdateLayout();
+            await Task.Delay(150);
             CaptureWindow(capturePath);
             await _viewModel.ShutdownAsync();
             _shutdownComplete = true;
@@ -149,6 +153,12 @@ public partial class MainWindow : Window
         }
 
         args.Cancel = true;
+        if (_shutdownStarted)
+        {
+            return;
+        }
+
+        _shutdownStarted = true;
         IsEnabled = false;
         await _viewModel.ShutdownAsync();
         _shutdownComplete = true;

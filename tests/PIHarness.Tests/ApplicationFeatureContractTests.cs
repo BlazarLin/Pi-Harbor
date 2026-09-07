@@ -44,4 +44,17 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(xaml.Contains("在文件资源管理器中打开", StringComparison.Ordinal), "项目组必须提供右键打开目录入口");
         AssertEx.Equal("1.1.0", MainViewModel.ApplicationVersion, "界面版本必须取自应用程序集");
     }
+
+    [TestCase("TEST-22E", "窗口关闭流程可重入且只执行一次异步回收")]
+    public static void WindowShutdownIsIdempotent()
+    {
+        var code = File.ReadAllText(Path.Combine(
+            Path.GetFullPath(Environment.CurrentDirectory),
+            "src",
+            "PIHarness.App",
+            "MainWindow.xaml.cs"));
+
+        AssertEx.True(code.Contains("if (_shutdownStarted)", StringComparison.Ordinal), "重复 Closing 必须在异步等待前被拦截");
+        AssertEx.True(code.Contains("_shutdownStarted = true;", StringComparison.Ordinal), "首次 Closing 必须同步登记关闭状态");
+    }
 }
