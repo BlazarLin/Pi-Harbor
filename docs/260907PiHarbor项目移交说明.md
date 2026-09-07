@@ -41,7 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 - `scripts/run-tests.ps1`：完整自动测试入口。
 - `scripts/build-release.ps1`：图标生成、测试、自包含发布、冒烟检查和 ZIP 打包入口。
 
-原始调研与立项背景见 [`handoff-pi-desktop-gui-260903.md`](../handoff-pi-desktop-gui-260903.md)。其中“尚未决定自研”等内容已经过时，仅用于追溯方案来源；当前仓库即最终选定的自研实现。
+原始调研与立项背景见 [`handoff-pi-desktop-gui-260903.md`](handoff-pi-desktop-gui-260903.md)。其中“尚未决定自研”等内容已经过时，仅用于追溯方案来源；当前仓库即最终选定的自研实现。
 
 ## 3. 设计与实施记录索引
 
