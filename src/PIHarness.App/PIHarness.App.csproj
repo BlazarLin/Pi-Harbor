@@ -5,7 +5,15 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>PI-Harness</AssemblyName>
     <RootNamespace>PIHarness.App</RootNamespace>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
+    <ApplicationIcon>Assets\PI-Harness.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\PI-Harness.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PIHarness.Core\PIHarness.Core.csproj" />
   </ItemGroup>

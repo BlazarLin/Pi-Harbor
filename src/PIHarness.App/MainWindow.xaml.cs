@@ -118,6 +118,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnOpenProjectFolderClick(object sender, RoutedEventArgs args)
+    {
+        if (sender is not MenuItem { Tag: string cwd })
+        {
+            return;
+        }
+
+        if (!Directory.Exists(cwd))
+        {
+            _viewModel.ReportRecoverableError($"项目路径不存在：{cwd}");
+            return;
+        }
+
+        try
+        {
+            Process.Start(FolderLauncher.CreateStartInfo(cwd));
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            _viewModel.ReportRecoverableError($"打开项目目录失败：{exception.Message}");
+        }
+    }
+
     private async void OnClosing(object? sender, CancelEventArgs args)
     {
         if (_shutdownComplete)

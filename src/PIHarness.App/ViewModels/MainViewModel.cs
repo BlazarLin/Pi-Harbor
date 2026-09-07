@@ -25,6 +25,8 @@ public enum ChatSessionState
 
 public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 {
+    public static string ApplicationVersion =>
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
@@ -69,6 +71,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand SendCommand { get; }
     public AsyncRelayCommand StopCommand { get; }
+    public string AppVersionText => $"v{ApplicationVersion}";
+    public string WindowTitle => $"PI-Harness {ApplicationVersion}";
 
     public string InputText
     {
@@ -344,6 +348,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));
             }).ConfigureAwait(false);
         }
+    }
+
+    public void ReportRecoverableError(string message)
+    {
+        StatusText = message;
     }
 
     public async Task ShutdownAsync()
