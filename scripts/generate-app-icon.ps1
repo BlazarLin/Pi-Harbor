@@ -21,24 +21,27 @@ function New-IconBitmap([int]$size) {
     $visual = [System.Windows.Media.DrawingVisual]::new()
     $drawing = $visual.RenderOpen()
     $scale = [double]$size
-    $darkBrush = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Color]::FromRgb(24, 23, 26))
-    $accentBrush = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Color]::FromRgb(109, 96, 232))
+    $accentBrush = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Color]::FromRgb(125, 115, 234))
     $whiteBrush = [System.Windows.Media.Brushes]::White
-    $drawing.DrawRoundedRectangle(
-        $darkBrush,
-        $null,
-        [System.Windows.Rect]::new(0.04 * $scale, 0.04 * $scale, 0.92 * $scale, 0.92 * $scale),
-        0.18 * $scale,
-        0.18 * $scale)
     $drawing.DrawRoundedRectangle(
         $accentBrush,
         $null,
-        [System.Windows.Rect]::new(0.16 * $scale, 0.16 * $scale, 0.68 * $scale, 0.68 * $scale),
-        0.15 * $scale,
-        0.15 * $scale)
-    $drawing.DrawRectangle($whiteBrush, $null, [System.Windows.Rect]::new(0.28 * $scale, 0.30 * $scale, 0.44 * $scale, 0.09 * $scale))
-    $drawing.DrawRectangle($whiteBrush, $null, [System.Windows.Rect]::new(0.34 * $scale, 0.35 * $scale, 0.09 * $scale, 0.35 * $scale))
-    $drawing.DrawRectangle($whiteBrush, $null, [System.Windows.Rect]::new(0.57 * $scale, 0.35 * $scale, 0.09 * $scale, 0.35 * $scale))
+        [System.Windows.Rect]::new(0.025 * $scale, 0.025 * $scale, 0.95 * $scale, 0.95 * $scale),
+        0.08 * $scale,
+        0.08 * $scale)
+    $bottom = if ($size -lt 32) { .73 } else { .62 }
+    $drawing.DrawRectangle($whiteBrush, $null, [System.Windows.Rect]::new(.21 * $scale, .21 * $scale, .57 * $scale, .105 * $scale))
+    $drawing.DrawRectangle($whiteBrush, $null, [System.Windows.Rect]::new(.30 * $scale, .27 * $scale, .105 * $scale, ($bottom-.27) * $scale))
+    $drawing.DrawRectangle($whiteBrush, $null, [System.Windows.Rect]::new(.59 * $scale, .27 * $scale, .105 * $scale, ($bottom-.27) * $scale))
+    if ($size -ge 32) {
+        $drawing.PushClip([Windows.Media.RectangleGeometry]::new([Windows.Rect]::new(.025*$scale,.025*$scale,.95*$scale,.95*$scale),.08*$scale,.08*$scale))
+        $band = [Windows.Media.SolidColorBrush]::new([Windows.Media.Color]::FromRgb(80,68,168))
+        $drawing.DrawRectangle($band,$null,[Windows.Rect]::new(.025*$scale,.70*$scale,.95*$scale,.275*$scale))
+        $drawing.Pop()
+        $typeface = [Windows.Media.Typeface]::new([Windows.Media.FontFamily]::new('Segoe UI'),[Windows.FontStyles]::Italic,[Windows.FontWeights]::SemiBold,[Windows.FontStretches]::Normal)
+        $label = [Windows.Media.FormattedText]::new('harbor',[Globalization.CultureInfo]::InvariantCulture,[Windows.FlowDirection]::LeftToRight,$typeface,.20*$scale,$whiteBrush,1.0)
+        $drawing.DrawText($label,[Windows.Point]::new(.31*$scale,.72*$scale))
+    }
     $drawing.Close()
 
     $bitmap = [System.Windows.Media.Imaging.RenderTargetBitmap]::new(

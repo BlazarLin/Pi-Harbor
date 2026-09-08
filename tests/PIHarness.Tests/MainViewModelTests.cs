@@ -171,7 +171,7 @@ internal static class MainViewModelTests
         string sessionRoot,
         out List<PiRpcClient> clients,
         string? commandLog = null,
-        int nStateDelayMs = 0)
+        int nStateDelayMs = 0, string? namesDirectory = null)
     {
         clients = [];
         var capturedClients = clients;
@@ -180,7 +180,7 @@ internal static class MainViewModelTests
             var client = new PiRpcClient(options => CreateFakeStartInfo(options, commandLog, nStateDelayMs));
             capturedClients.Add(client);
             return client;
-        });
+        }, namesDirectory);
     }
 
     private static ProcessStartInfo CreateFakeStartInfo(PiStartOptions options, string? commandLog, int nStateDelayMs)

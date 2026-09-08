@@ -10,6 +10,7 @@ public sealed class SessionCatalog : IDisposable
 {
     private const int DebounceMilliseconds = 300;
     private readonly string _root;
+    private readonly SessionNameStore? _names;
     private readonly object _timerLock = new();
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
@@ -20,17 +21,44 @@ public sealed class SessionCatalog : IDisposable
     private readonly ConcurrentDictionary<string, CachedSession> _cache = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
-    public SessionCatalog(string root)
+    public SessionCatalog(string root, SessionNameStore? names = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         _root = System.IO.Path.GetFullPath(root);
+        _names = names;
     }
 
     public event EventHandler? Changed;
 
     public static Task<CatalogSnapshot> ScanAsync(string root, CancellationToken cancellationToken) => ScanAsync(root, null, cancellationToken);
 
-    public Task<CatalogSnapshot> ScanCurrentAsync(CancellationToken cancellationToken) => ScanAsync(_root, _cache, cancellationToken);
+    public async Task<CatalogSnapshot> ScanCurrentAsync(CancellationToken cancellationToken)
+    {
+        var snapshot = await ScanAsync(_root, _cache, cancellationToken).ConfigureAwait(false);
+        if (_names is null) return snapshot;
+        var projects = new List<ProjectGroup>();
+        var warnings = snapshot.Warnings.ToList();
+        foreach (var project in snapshot.Projects)
+        {
+            var sessions = new List<SessionSummary>();
+            foreach (var session in project.Sessions)
+            {
+                var renamed = session;
+                try
+                {
+                    if (await _names.ReadAsync(session.SessionPath, cancellationToken).ConfigureAwait(false) is { } name)
+                        renamed = session with { Title = name };
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
+                {
+                    if (warnings.Count < 200) warnings.Add($"自定义名称读取失败：{error.Message}");
+                }
+                sessions.Add(renamed);
+            }
+            projects.Add(project with { Sessions = sessions });
+        }
+        return snapshot with { Projects = projects, Warnings = warnings };
+    }
 
     private static async Task<CatalogSnapshot> ScanAsync(string root, ConcurrentDictionary<string, CachedSession>? cache, CancellationToken cancellationToken)
     {

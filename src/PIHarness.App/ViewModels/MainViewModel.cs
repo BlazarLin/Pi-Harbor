@@ -24,12 +24,12 @@ public enum ChatSessionState
     Faulted,
 }
 
-public sealed class MainViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.3.1";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.4.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
@@ -57,11 +57,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _draftKey = "initial";
     private readonly Dictionary<string, (string Text, ImageAttachmentViewModel[] Images)> _drafts = new(StringComparer.OrdinalIgnoreCase);
 
-    public MainViewModel(string? sessionRoot = null, Func<PiRpcClient>? rpcClientFactory = null)
+    public MainViewModel(string? sessionRoot = null, Func<PiRpcClient>? rpcClientFactory = null, string? namesDirectory = null)
     {
         _sessionRoot = Path.GetFullPath(sessionRoot ?? GetDefaultSessionRoot());
         _rpcClientFactory = rpcClientFactory ?? (() => new PiRpcClient());
-        _catalog = new SessionCatalog(_sessionRoot);
+        _nameStore = new SessionNameStore(namesDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pi Harbor", "session-names"));
+        _catalog = new SessionCatalog(_sessionRoot, _nameStore);
         _catalog.Changed += OnCatalogChanged;
         _uiContext = SynchronizationContext.Current;
 
@@ -499,6 +500,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _shuttingDown = true;
+        _searchCts?.Cancel();
+        await _searchTask.ConfigureAwait(false);
         _catalog.Changed -= OnCatalogChanged;
         _catalog.Dispose();
         await CloseRpcClientAsync().ConfigureAwait(false);
@@ -1029,6 +1032,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ReplaceProjects(CatalogSnapshot snapshot)
     {
+        if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle) StatusText = snapshot.Warnings[0];
         var previous = Projects.SelectMany(project => project.Sessions).Select(item => item.Session);
         var incoming = snapshot.Projects.SelectMany(project => project.Sessions);
         if (previous.SequenceEqual(incoming)) return;
@@ -1041,6 +1045,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             foreach (var session in item.Sessions) session.IsLatest = AreSameSessionPath(session.SessionPath, latestPath);
             Projects.Add(item);
         }
+        var selected = snapshot.Projects.SelectMany(project => project.Sessions).FirstOrDefault(session => AreSameSessionPath(session.SessionPath, SelectedSessionPath));
+        if (selected is not null) CurrentTitle = selected.Title;
+        ScheduleSearch(catalogChanged: true);
 
         if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle)
         {

@@ -9,16 +9,16 @@
 
 GitHub Windows 2025 runner 目前包含 Inno Setup 6；脚本会查找 `ISCC.exe`，缺失时明确失败。参考 [runner 软件清单](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md)。GitHub Release 使用仓库自动提供的 `GITHUB_TOKEN`，不需要把个人 PAT 写入配置。
 
-## 第一次发布
+## 发布新版本
 
 1. 将本地代码推送到 `BlazarLin/Pi-Harbor`，确认仓库 Settings → Actions 允许工作流运行。发布 job 已声明 `contents: write`，组织策略不得禁止此权限。
-2. 确认 `src/PIHarness.App/PIHarness.App.csproj` 中 Version、AssemblyVersion、FileVersion、InformationalVersion 一致，README 与 CHANGELOG 更新。当前为 `1.3.1`。
+2. 确认 `src/PIHarness.App/PIHarness.App.csproj` 中 Version、AssemblyVersion、FileVersion、InformationalVersion 一致，README 与 CHANGELOG 更新。当前源码为 `1.4.0`。
 3. 本机运行完整测试、Release UI 验收和安装/卸载验收；公开截图只使用 `docs/images/` 的脱敏图。
 4. 提交并推送代码后，创建与版本一致的标签：
 
 ```powershell
-git tag -a v1.3.1 -m "Pi Harbor 1.3.1"
-git push origin v1.3.1
+git tag -a v1.4.0 -m "Pi Harbor 1.4.0"
+git push origin v1.4.0
 ```
 
 5. 在 Actions 查看 Windows Release 成功，再进入 Releases 检查草稿说明与附件，点击 **Publish release**。
@@ -36,7 +36,7 @@ powershell -NoProfile -File scripts/build-release.ps1 -IncludeInstaller
 
 编译器不在默认位置时添加 `-IsccPath 'C:\Tools\Inno Setup 6\ISCC.exe'`。只需要便携 ZIP 时省略 `-IncludeInstaller`。`-SkipSmokeCapture` 供无桌面的 CI 使用；它仍然运行全部自动测试。
 
-若旧发布目录内的程序仍在运行，脚本会在清理前停止。可增加 `-PublishDirectory artifacts/Pi-Harbor-1.3.1-win-x64`，在独立目录构建而不打断已打开的程序。
+若旧发布目录内的程序仍在运行，脚本会在清理前停止。可增加 `-PublishDirectory artifacts/Pi-Harbor-1.4.0-win-x64`，在独立目录构建而不打断已打开的程序。
 
 安装器使用固定 AppId，默认装入 `%LOCALAPPDATA%\Programs\Pi Harbor`，无需管理员权限。开始菜单快捷方式自动创建，桌面快捷方式可选。卸载不删除 `.pi` 会话、项目或凭据；Pi 与 Node.js 需用户另行安装。参考 [Inno Setup 权限模式](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)。
 
@@ -54,7 +54,7 @@ Get-FileHash .\Pi-Harbor-Setup-win-x64.exe -Algorithm SHA256
 powershell -NoProfile -File scripts/verify-release.ps1 `
   -AssetDirectory artifacts/downloads `
   -VerificationDirectory artifacts/qa/release-check `
-  -ExpectedVersion 1.3.1 `
+  -ExpectedVersion 1.4.0 `
   -ExpectedCommit <版本标签指向的完整提交号>
 ```
 

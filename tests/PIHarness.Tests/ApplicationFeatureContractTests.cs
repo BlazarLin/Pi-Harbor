@@ -22,7 +22,7 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(string.IsNullOrEmpty(startInfo.Arguments), "不得拼接可注入的 Arguments 字符串");
     }
 
-    [TestCase("TEST-22D", "Pi Harbor 主品牌、副标题、图标与 1.3.1 版本进入窗口和程序集")]
+    [TestCase("TEST-22D", "Pi Harbor 主品牌、副标题、图标与 1.4.0 版本进入窗口和程序集")]
     public static void ApplicationIdentityIsVersionedAndBranded()
     {
         var repoRoot = Path.GetFullPath(Environment.CurrentDirectory);
@@ -43,8 +43,8 @@ internal static class ApplicationFeatureContractTests
         AssertEx.Equal("Pi Harbor — Pi Session Desk", values["AssemblyTitle"], "Windows 文件说明必须同时显示主品牌和副标题");
         AssertEx.Equal("Pi Harbor", values["Product"], "Windows 产品元数据必须使用主品牌");
         AssertEx.True(values["Description"].Contains("Pi Session Desk", StringComparison.Ordinal), "产品描述必须包含副标题");
-        AssertEx.Equal("1.3.1", values["Version"], "包版本必须为 1.3.1");
-        AssertEx.Equal("1.3.1.0", values["FileVersion"], "文件版本必须为 1.3.1.0");
+        AssertEx.Equal("1.4.0", values["Version"], "包版本必须为 1.4.0");
+        AssertEx.Equal("1.4.0.0", values["FileVersion"], "文件版本必须为 1.4.0.0");
         AssertEx.True(values["ApplicationIcon"].EndsWith("Pi-Harbor.ico", StringComparison.Ordinal), "项目必须嵌入新品牌图标");
         AssertEx.True(File.Exists(iconPath), "应用图标文件必须存在");
         AssertEx.True(new FileInfo(iconPath).Length > 1024, "应用图标不得为空壳");
@@ -52,7 +52,7 @@ internal static class ApplicationFeatureContractTests
         AssertEx.True(xaml.Contains("Text=\"Pi Harbor\"", StringComparison.Ordinal), "侧栏必须显示主品牌");
         AssertEx.True(xaml.Contains("Text=\"Pi Session Desk\"", StringComparison.Ordinal), "侧栏必须显示功能副标题");
         AssertEx.True(xaml.Contains("在文件资源管理器中打开", StringComparison.Ordinal), "项目组必须提供右键打开目录入口");
-        AssertEx.Equal("1.3.1", MainViewModel.ApplicationVersion, "界面版本必须取自应用程序集");
+        AssertEx.Equal("1.4.0", MainViewModel.ApplicationVersion, "界面版本必须取自应用程序集");
         AssertEx.True(viewModelSource.Contains("$\"{ProductName} {ApplicationVersion} — {ProductSubtitle}\"", StringComparison.Ordinal), "窗口标题必须同时表达主品牌和副标题");
         AssertEx.True(releaseScript.Contains("'Pi-Harbor-win-x64'", StringComparison.Ordinal), "发布目录必须使用新品牌名");
         AssertEx.True(releaseScript.Contains("'Pi-Harbor-win-x64.zip'", StringComparison.Ordinal), "发布压缩包必须使用新品牌名");

@@ -36,7 +36,9 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        _viewModel = ReadCommandLineOption("--qa-composer-capture-dir") is null
+        _viewModel = ReadCommandLineOption("--qa-search-capture-dir") is { } searchQa
+            ? CreateSearchQaViewModel(searchQa)
+            : ReadCommandLineOption("--qa-composer-capture-dir") is null
             ? new MainViewModel()
             : new MainViewModel(rpcClientFactory: () => new PiRpcClient(options =>
                 PiProcessLocator.CreateStartInfo(PiProcessLocator.Find().PiCommandPath!, options with { NoSession = true, Offline = true })));
@@ -52,6 +54,15 @@ public partial class MainWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await _viewModel.InitializeAsync();
+        if (ReadCommandLineOption("--qa-search-capture-dir") is { } searchQa)
+        {
+            var passed = await CaptureSearchQaAsync(searchQa);
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Environment.ExitCode = passed ? 0 : 1;
+            Close();
+            return;
+        }
         var publicCaptureDirectory = ReadCommandLineOption("--capture-public-docs");
         if (!string.IsNullOrWhiteSpace(publicCaptureDirectory))
         {
