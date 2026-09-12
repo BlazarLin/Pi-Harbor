@@ -53,7 +53,7 @@ public partial class MainWindow
             Check(SessionTree.IsVisible && !GlobalSearchResults.IsVisible, "清空搜索恢复项目树");
             var session = _viewModel.Projects[0].Sessions.First(item => Path.GetFileName(item.SessionPath) == "first.jsonl").Session;
             var label = FindSearchQaLabels(SessionTree).First(item => item.Text == session.Title);
-            var host = label.Parent as StackPanel;
+            var host = FindContextMenuAncestor(label);
             var menu = host?.ContextMenu;
             Check(menu is not null, "会话行存在重命名菜单");
             menu!.PlacementTarget = host;
@@ -91,6 +91,17 @@ public partial class MainWindow
         catch (Exception error) { checks.Add($"[失败] {error}"); }
         await File.WriteAllLinesAsync(Path.Combine(directory, "search-qa.txt"), checks);
         return checks.All(line => line.StartsWith("[通过]", StringComparison.Ordinal));
+    }
+
+    private static FrameworkElement? FindContextMenuAncestor(DependencyObject start)
+    {
+        var current = start;
+        while (current is not null)
+        {
+            if (current is FrameworkElement { ContextMenu: not null } owner) return owner;
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     private static IEnumerable<TextBlock> FindSearchQaLabels(DependencyObject owner)

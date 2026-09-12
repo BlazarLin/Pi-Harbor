@@ -18,6 +18,9 @@
         Loaded="OnLoaded"
         PreviewKeyDown="OnWorkspacePreviewKeyDown"
         Closing="OnClosing">
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo Description="Pi Harbor — Pi Session Desk" />
+    </Window.TaskbarItemInfo>
     <Window.Resources>
         <p:ChatMessageTemplateSelector x:Key="MessageTemplateSelector" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -91,6 +94,9 @@
                 <Border MaxWidth="760" HorizontalAlignment="Right"
                         Background="{StaticResource UserBubbleBrush}"
                         CornerRadius="9" Padding="14,10">
+                    <Border.Style><Style TargetType="Border">
+                        <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
+                    </Style></Border.Style>
                     <StackPanel>
                     <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource PrimaryTextBrush}"
@@ -113,10 +119,14 @@
 
         <DataTemplate x:Key="AssistantMessageTemplate">
             <Grid Margin="18,8,70,8">
-                <p:MarkdownTextBlock MaxWidth="880" HorizontalAlignment="Left"
-                                     Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
-                                     Foreground="{StaticResource PrimaryTextBrush}"
-                                     FontSize="14" />
+                <Border MaxWidth="880" HorizontalAlignment="Left" Background="Transparent" CornerRadius="6" Padding="2">
+                    <Border.Style><Style TargetType="Border">
+                        <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
+                    </Style></Border.Style>
+                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                                         Foreground="{StaticResource PrimaryTextBrush}"
+                                         FontSize="14" />
+                </Border>
             </Grid>
         </DataTemplate>
 
@@ -148,6 +158,9 @@
         <DataTemplate x:Key="SystemMessageTemplate">
             <Border Margin="18,5,70,5" BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="1" CornerRadius="6" Padding="10,7">
+                <Border.Style><Style TargetType="Border">
+                    <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" /><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
+                </Style></Border.Style>
                 <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                      Foreground="{StaticResource SecondaryTextBrush}"
                                      FontSize="13" />
@@ -163,6 +176,9 @@
 
         <DataTemplate x:Key="ErrorMessageTemplate">
             <Border Margin="18,6,70,6" Background="#392525" CornerRadius="6" Padding="11,8">
+                <Border.Style><Style TargetType="Border">
+                    <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
+                </Style></Border.Style>
                 <TextBlock Text="{Binding Text}" Foreground="{StaticResource ErrorBrush}"
                            TextWrapping="Wrap" />
             </Border>
@@ -191,10 +207,24 @@
                 <StackPanel.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="重命名…" InputGestureText="F2" Tag="{Binding Session}" Click="OnRenameSessionClick" />
+                        <MenuItem Header="{Binding StarMenuHeader}" Tag="{Binding Session}" Click="OnToggleStarClick" />
                     </ContextMenu>
                 </StackPanel.ContextMenu>
-                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource PrimaryTextBrush}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource PrimaryTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="★" Foreground="{StaticResource StarBrush}" Margin="6,0,0,0"
+                               Visibility="{Binding IsStarred, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               ToolTip="重点关注" />
+                </Grid>
                 <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                    <TextBlock Text="● 未读 " Foreground="{StaticResource UnreadBrush}" FontSize="11" FontWeight="SemiBold"
+                               Visibility="{Binding HasUnread, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Text="◌ 处理中 " Foreground="{StaticResource AccentBrush}" FontSize="11"
+                               Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock Text="最新 · " Foreground="{StaticResource AccentBrush}" FontSize="11"
                                Visibility="{Binding IsLatest, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock Text="{Binding RelativeActivityText}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" />
@@ -260,6 +290,10 @@
                                 <Setter TargetName="HeaderBorder" Property="Background" Value="{StaticResource CurrentSessionBrush}" />
                                 <Setter TargetName="HeaderBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding IsStarred}" Value="True">
+                                <Setter TargetName="HeaderBorder" Property="BorderBrush" Value="{StaticResource StarBrush}" />
+                                <Setter TargetName="HeaderBorder" Property="BorderThickness" Value="3,0,0,0" />
+                            </DataTrigger>
                             <Trigger Property="IsExpanded" Value="False">
                                 <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
                             </Trigger>
@@ -324,8 +358,49 @@
 
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
                     <StackPanel>
-                        <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource SecondaryTextBrush}"
-                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusText}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="ProcessingSpinner" Text="⣾" FontSize="13" Margin="0,1,6,0"
+                                       Foreground="{StaticResource AccentBrush}" ToolTip="pi 正在处理，可继续切换其他会话">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsStreaming}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard x:Name="SpinnerStoryboard">
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <StringAnimationUsingKeyFrames Storyboard.TargetProperty="Text" Duration="0:0:0.72">
+                                                                <DiscreteStringKeyFrame Value="⣾" KeyTime="0:0:0.09" />
+                                                                <DiscreteStringKeyFrame Value="⣽" KeyTime="0:0:0.18" />
+                                                                <DiscreteStringKeyFrame Value="⣻" KeyTime="0:0:0.27" />
+                                                                <DiscreteStringKeyFrame Value="⢿" KeyTime="0:0:0.36" />
+                                                                <DiscreteStringKeyFrame Value="⡿" KeyTime="0:0:0.45" />
+                                                                <DiscreteStringKeyFrame Value="⣟" KeyTime="0:0:0.54" />
+                                                                <DiscreteStringKeyFrame Value="⣯" KeyTime="0:0:0.63" />
+                                                                <DiscreteStringKeyFrame Value="⣷" KeyTime="0:0:0.72" />
+                                                            </StringAnimationUsingKeyFrames>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <StopStoryboard BeginStoryboardName="SpinnerStoryboard" />
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource SecondaryTextBrush}"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusText}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding BackgroundActivityText}" Foreground="{StaticResource UnreadBrush}"
+                                   FontSize="11" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style><Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers><DataTrigger Binding="{Binding BackgroundActivityText}" Value=""><Setter Property="Visibility" Value="Hidden" /></DataTrigger></Style.Triggers>
+                            </Style></TextBlock.Style>
+                        </TextBlock>
                         <TextBlock Text="{Binding ModelText}" Foreground="{StaticResource MutedTextBrush}"
                                    FontSize="12" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
@@ -385,6 +460,9 @@
                                    FontSize="12" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentCwd}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <TextBlock Text="{Binding TotalTokensText}" Foreground="{StaticResource SecondaryTextBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,14,0" FontSize="12"
+                                   ToolTip="本会话累计消耗 Token（含本地历史与本次运行内完成的轮次）" />
                         <ComboBox x:Name="ModelSelector" Width="280" MaxDropDownHeight="420"
                                   Style="{StaticResource ModelComboBoxStyle}"
                                   ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel, Mode=OneWay}"

@@ -15,10 +15,13 @@ using System.Windows.Interop;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shell;
 using System.Windows.Threading;
+using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.Win32;
 using PIHarness.App.ViewModels;
 using PIHarness.App.Presentation;
+using PIHarness.Core.Models;
 using PIHarness.Core.Sessions;
 using PIHarness.Core.Rpc;
 
@@ -33,6 +36,7 @@ public partial class MainWindow : Window
     private bool _shutdownComplete;
     private bool _shutdownStarted;
     private readonly DispatcherTimer _activityTimer = new() { Interval = TimeSpan.FromMinutes(1) };
+    private BulkObservableCollection<ChatItemViewModel>? _attachedMessages;
 
     public MainWindow()
     {
@@ -47,8 +51,52 @@ public partial class MainWindow : Window
         InitializeComposer();
         _activityTimer.Tick += (_, _) => _viewModel.RefreshRelativeActivityTimes(DateTimeOffset.Now);
         _activityTimer.Start();
-        _viewModel.Messages.CollectionChanged += OnMessagesChanged;
+        AttachActiveMessages();
+        _viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
+        _viewModel.ConversationAttention += OnConversationAttention;
         SourceInitialized += (_, _) => EnableDarkTitleBar();
+    }
+
+    private void OnMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(MainViewModel.Active))
+        {
+            AttachActiveMessages();
+            _scrollCoordinator.Reset();
+            CancelPendingAutoScroll();
+            UpdateReturnToLatestVisibility();
+            UpdateTaskbarOverlay();
+        }
+        else if (args.PropertyName is nameof(MainViewModel.UnreadCount) or nameof(MainViewModel.BusyCount))
+        {
+            UpdateTaskbarOverlay();
+        }
+    }
+
+    private void AttachActiveMessages()
+    {
+        if (_attachedMessages is not null)
+        {
+            _attachedMessages.CollectionChanged -= OnMessagesChanged;
+        }
+
+        _attachedMessages = _viewModel.Messages;
+        _attachedMessages.CollectionChanged += OnMessagesChanged;
+    }
+
+    private void OnConversationAttention(ConversationViewModel conversation, string kind)
+    {
+        UpdateTaskbarOverlay();
+        if (!conversation.HasUnread || conversation == _viewModel.Active)
+        {
+            return;
+        }
+
+        FlashWindowForAttention();
+        if (kind == "settled")
+        {
+            ShowCompletionToast(conversation);
+        }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
@@ -261,6 +309,11 @@ public partial class MainWindow : Window
             {
                 item.PropertyChanged += OnMessagePropertyChanged;
                 _subscribedMessages.Add(item);
+                if (item.Kind == ChatItemKind.User)
+                {
+                    // Sending a message should always reveal the newest content.
+                    _scrollCoordinator.ReturnToLatest();
+                }
             }
         }
 
@@ -378,6 +431,105 @@ public partial class MainWindow : Window
 
         var enabled = 1;
         _ = DwmSetWindowAttribute(source.Handle, 20, ref enabled, sizeof(int));
+    }
+
+    // ---- Completion attention: taskbar badge, flashing and a Windows 11 toast. ----
+
+    private void UpdateTaskbarOverlay()
+    {
+        if (TaskbarItemInfo is null)
+        {
+            return;
+        }
+
+        var count = _viewModel.UnreadCount;
+        TaskbarItemInfo.Overlay = count == 0 ? null : CreateOverlayBadge(count);
+    }
+
+    private static ImageSource CreateOverlayBadge(int count)
+    {
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen())
+        {
+            context.DrawEllipse(new SolidColorBrush(Color.FromRgb(0xE0, 0x4F, 0x4F)), null, new Point(8, 8), 8, 8);
+            var text = new FormattedText(
+                count > 9 ? "9+" : count.ToString(),
+                System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                new Typeface("Segoe UI"),
+                count > 9 ? 9 : 10.5,
+                Brushes.White,
+                96);
+            context.DrawText(text, new Point(8 - text.Width / 2, 8 - text.Height / 2));
+        }
+
+        var bitmap = new RenderTargetBitmap(16, 16, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private void FlashWindowForAttention()
+    {
+        if (IsActive)
+        {
+            return;
+        }
+
+        try
+        {
+            if (PresentationSource.FromVisual(this) is HwndSource source)
+            {
+                var info = new FLASHWINFO
+                {
+                    cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
+                    hwnd = source.Handle,
+                    dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG,
+                    uCount = uint.MaxValue,
+                };
+                _ = FlashWindowEx(ref info);
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or COMException or DllNotFoundException)
+        {
+            // Flashing is best-effort; the taskbar badge remains available.
+        }
+    }
+
+    private void ShowCompletionToast(ConversationViewModel conversation)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText("Pi 会话已完成")
+                .AddText(string.IsNullOrWhiteSpace(conversation.Title) ? "有一个会话任务结束，点击查看回复。" : $"『{conversation.Title}』已完成，点击查看回复。")
+                .Show();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or COMException or DllNotFoundException)
+        {
+            // Toasts are best-effort; the taskbar badge and flashing remain available.
+        }
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
+
+    private const uint FLASHW_ALL = 0x3;
+    private const uint FLASHW_TIMERNOFG = 0xC;
+
+    [DllImport("user32.dll")]
+    private static extern int FlashWindowEx(ref FLASHWINFO info);
+
+    protected override void OnClosed(EventArgs args)
+    {
+        ToastNotificationManagerCompat.Uninstall();
+        base.OnClosed(args);
     }
 
     private async Task<bool> RunScrollQaAsync(string outputDirectory)

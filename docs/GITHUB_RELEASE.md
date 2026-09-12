@@ -12,13 +12,13 @@ GitHub Windows 2025 runner 目前包含 Inno Setup 6；脚本会查找 `ISCC.exe
 ## 发布新版本
 
 1. 将本地代码推送到 `BlazarLin/Pi-Harbor`，确认仓库 Settings → Actions 允许工作流运行。发布 job 已声明 `contents: write`，组织策略不得禁止此权限。
-2. 确认 `src/PIHarness.App/PIHarness.App.csproj` 中 Version、AssemblyVersion、FileVersion、InformationalVersion 一致，README 与 CHANGELOG 更新。当前源码为 `1.4.0`。
+2. 确认 `src/PIHarness.App/PIHarness.App.csproj` 中 Version、AssemblyVersion、FileVersion、InformationalVersion 一致，README 与 CHANGELOG 更新。当前源码为 `1.5.0`。
 3. 本机运行完整测试、Release UI 验收和安装/卸载验收；公开截图只使用 `docs/images/` 的脱敏图。
 4. 提交并推送代码后，创建与版本一致的标签：
 
 ```powershell
-git tag -a v1.4.0 -m "Pi Harbor 1.4.0"
-git push origin v1.4.0
+git tag -a v1.5.0 -m "Pi Harbor 1.5.0"
+git push origin v1.5.0
 ```
 
 5. 在 Actions 查看 Windows Release 成功，再进入 Releases 检查草稿说明与附件，点击 **Publish release**。

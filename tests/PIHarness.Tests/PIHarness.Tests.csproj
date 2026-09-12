@@ -1,12 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <AssemblyName>PIHarness.Tests</AssemblyName>
     <RootNamespace>PIHarness.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\PIHarness.Core\PIHarness.Core.csproj" />
     <ProjectReference Include="..\..\src\PIHarness.App\PIHarness.App.csproj" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-rxg9-xrhp-64gj" />
   </ItemGroup>
 </Project>

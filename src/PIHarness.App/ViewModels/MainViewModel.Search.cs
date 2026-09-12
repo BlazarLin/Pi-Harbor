@@ -88,7 +88,25 @@ public sealed partial class MainViewModel
         ThrowIfDisposed();
         if (!File.Exists(session.SessionPath)) throw new FileNotFoundException("会话文件已不存在，请刷新列表。");
         await _nameStore.SaveAsync(session.SessionPath, name).ConfigureAwait(false);
+        var key = Path.GetFullPath(session.SessionPath);
+        if (name is not null)
+        {
+            _customRenames.Add(key);
+            if (_conversations.TryGetValue(key, out var renamed)) renamed.ApplySessionRename(name);
+        }
+        else
+        {
+            _customRenames.Remove(key);
+        }
+
         await RefreshCatalogAsync().ConfigureAwait(false);
+        if (name is null && _conversations.TryGetValue(key, out var restored))
+        {
+            // Restore the parsed title from the refreshed catalog.
+            var parsedTitle = Projects.SelectMany(project => project.Sessions)
+                .FirstOrDefault(item => AreSameSessionPath(item.SessionPath, key))?.Title;
+            if (parsedTitle is not null) restored.ApplySessionRename(parsedTitle);
+        }
     }
 }
 

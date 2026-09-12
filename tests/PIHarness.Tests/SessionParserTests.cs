@@ -43,6 +43,22 @@ internal static class SessionParserTests
 
         AssertEx.Equal("分析 图像 异常", result.Session!.Title, "标题应压缩连续空白");
     }
+
+    [TestCase("TEST-03C", "注入的扩展上下文不作为会话标题")]
+    public static async Task InjectedExtensionContextIsNotATitleAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = directory.WriteSession(
+            "injected-context.jsonl",
+            """
+            {"type":"session","version":3,"id":"session-3","timestamp":"2026-09-03T08:00:00Z","cwd":"G:\\Code\\Demo"}
+            {"type":"message","id":"11111111","parentId":null,"timestamp":"2026-09-03T08:00:01Z","message":{"role":"user","content":[{"type":"text","text":"--- pi-extension-context-92f1\nworkspace: G:\\Code\\Demo\n---\n实际的用户问题"},{"type":"text","text":"补充说明"}]}}
+            """);
+
+        var result = await SessionParser.ParseAsync(path, CancellationToken.None);
+
+        AssertEx.Equal("实际的用户问题", result.Session!.Title, "应跳过以 --- 开头的注入上下文块");
+    }
 }
 
 internal sealed class TemporaryDirectory : IDisposable

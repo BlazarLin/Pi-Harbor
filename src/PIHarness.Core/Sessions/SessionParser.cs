@@ -255,9 +255,11 @@ public static class SessionParser
         {
             if (part.ValueKind == JsonValueKind.Object &&
                 TryGetString(part, "type", out var partType) && partType == "text" &&
-                TryGetString(part, "text", out var text))
+                TryGetString(part, "text", out var text) &&
+                text is not null &&
+                StripInjectedContext(text) is { } cleaned)
             {
-                var normalized = NormalizeTitle(text);
+                var normalized = NormalizeTitle(cleaned);
                 if (!string.IsNullOrEmpty(normalized))
                 {
                     return normalized;
@@ -266,6 +268,28 @@ public static class SessionParser
         }
 
         return null;
+    }
+
+    /// <summary>Extensions may inject context blocks (for example "--- pi-extension-context") in front of the real user text.</summary>
+    private static string? StripInjectedContext(string text)
+    {
+        var lines = text.Split('\n');
+        var lastSeparator = -1;
+        for (var index = 0; index < lines.Length && index < 12; index++)
+        {
+            if (lines[index].TrimStart().StartsWith("---", StringComparison.Ordinal))
+            {
+                lastSeparator = index;
+            }
+        }
+
+        if (lastSeparator < 0)
+        {
+            return text;
+        }
+
+        var rest = string.Join('\n', lines[(lastSeparator + 1)..]);
+        return string.IsNullOrWhiteSpace(rest) ? null : rest;
     }
 
     private static string? NormalizeTitle(string? value)

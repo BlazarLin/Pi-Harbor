@@ -154,17 +154,52 @@ internal static class MainViewModelTests
         AssertEx.Equal(0, viewModel.Projects.SelectMany(project => project.Sessions).Count(session => session.IsCurrent), "新对话不应继续高亮历史会话");
     }
 
-    [TestCase("TEST-13", "连续切换空闲会话始终只保留一个 RPC 客户端")]
-    public static async Task KeepsOnlyOneActiveClientAsync()
+    [TestCase("TEST-13", "多会话并行时每个会话保持独立 RPC 客户端运行")]
+    public static async Task KeepsIndependentClientsForParallelSessionsAsync()
     {
         using var directory = new TemporaryDirectory();
         await using var viewModel = CreateViewModel(directory.Path, out var clients);
         await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "会话一"));
         await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "会话二"));
 
-        AssertEx.Equal(2, clients.Count, "两次打开应创建两个顺序客户端");
-        AssertEx.False(clients[0].IsRunning, "切换后旧客户端必须退出");
+        AssertEx.Equal(2, clients.Count, "两个会话应各自创建一个客户端");
+        AssertEx.True(clients[0].IsRunning, "并行会话的旧客户端必须保持运行");
         AssertEx.True(clients[1].IsRunning, "新客户端应保持运行");
+        AssertEx.False(ReferenceEquals(clients[0], clients[1]), "两个会话不得共享客户端");
+
+        await viewModel.ShutdownAsync();
+        AssertEx.False(clients[0].IsRunning, "关闭后第一个客户端应退出");
+        AssertEx.False(clients[1].IsRunning, "关闭后第二个客户端应退出");
+    }
+
+    [TestCase("TEST-13B", "后台会话完成时标记未读且不丢失消息")]
+    public static async Task MarksUnreadWhenBackgroundTurnSettlesAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var firstPath = WriteConversationSession(directory, "unread-first.jsonl");
+        var secondPath = WriteConversationSession(directory, "unread-second.jsonl");
+        await using var viewModel = CreateViewModel(directory.Path, out _);
+
+        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "后台会话", firstPath));
+        viewModel.InputText = "触发事件映射";
+        await viewModel.SendAsync();
+        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        var firstConversation = viewModel.Active;
+
+        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "前台会话", secondPath));
+        AssertEx.True(firstConversation.Messages.Any(item => item.Kind == ChatItemKind.Assistant && item.Text == "流式回复"),
+            "切走后后台会话消息必须保留");
+        AssertEx.Equal(0, viewModel.UnreadCount, "已读过的会话不算未读");
+
+        firstConversation.InputText = "后台再次发送";
+        await firstConversation.SendAsync();
+        await WaitUntilAsync(() => firstConversation.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        await WaitUntilAsync(() => viewModel.UnreadCount == 1, TimeSpan.FromSeconds(3));
+        AssertEx.True(firstConversation.HasUnread, "后台完成的轮次应标记未读");
+
+        await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "后台会话", firstPath));
+        AssertEx.False(firstConversation.HasUnread, "重新查看后未读标记应清除");
+        AssertEx.Equal(0, viewModel.UnreadCount, "查看后未读计数归零");
     }
 
     internal static MainViewModel CreateViewModel(

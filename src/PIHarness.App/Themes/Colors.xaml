@@ -14,6 +14,9 @@
     <Color x:Key="AccentColor">#7D73EA</Color>
     <Color x:Key="UserBubbleColor">#37334F</Color>
     <Color x:Key="ErrorColor">#F18B8B</Color>
+    <Color x:Key="StarColor">#E8B93E</Color>
+    <Color x:Key="UnreadColor">#7D73EA</Color>
+    <Color x:Key="HighlightColor">#4A4470</Color>
 
     <SolidColorBrush x:Key="WindowBrush" Color="{StaticResource WindowColor}" />
     <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
@@ -28,6 +31,9 @@
     <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="UserBubbleBrush" Color="{StaticResource UserBubbleColor}" />
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
+    <SolidColorBrush x:Key="StarBrush" Color="{StaticResource StarColor}" />
+    <SolidColorBrush x:Key="UnreadBrush" Color="{StaticResource UnreadColor}" />
+    <SolidColorBrush x:Key="HighlightBrush" Color="{StaticResource HighlightColor}" />
 
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="#303030" />

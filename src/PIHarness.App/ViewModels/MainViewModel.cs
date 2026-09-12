@@ -1,15 +1,14 @@
 // Created: 2026-09-06
-// Purpose: Coordinate the local session catalog, one pi RPC process, and chat presentation state.
+// Purpose: Coordinate the local session catalog, per-conversation pi RPC processes, starred sessions,
+//          and chat presentation state. Each conversation runs independently so several sessions can
+//          stream in parallel; the sidebar tree keeps operating while a turn is in flight.
 
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
-using System.Text;
-using System.Text.Json;
+using PIHarness.App.Presentation;
 using PIHarness.Core.Models;
 using PIHarness.Core.Rpc;
 using PIHarness.Core.Sessions;
-using PIHarness.App.Presentation;
 
 namespace PIHarness.App.ViewModels;
 
@@ -29,176 +28,95 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.4.0";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.5.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
+    private readonly SessionFlagStore _flagStore;
+    private readonly HashSet<string> _starredSessions;
+    private readonly HashSet<string> _customRenames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _flagLock = new(1, 1);
     private readonly SemaphoreSlim _catalogRefreshLock = new(1, 1);
     private int _catalogRefreshRequested;
     private readonly SynchronizationContext? _uiContext;
-    private readonly Dictionary<int, ChatItemViewModel> _streamItems = new();
-    private readonly Dictionary<string, ChatItemViewModel> _toolItems = new(StringComparer.Ordinal);
-    private readonly Stopwatch _turnTimer = new();
-    private PiRpcClient? _rpcClient;
-    private string _inputText = string.Empty;
-    private string _currentTitle = "选择一个会话";
-    private string _currentCwd = string.Empty;
-    private string _modelText = "";
-    private string _statusText = "就绪";
-    private string? _selectedSessionPath;
-    private ModelOptionViewModel? _selectedModel;
-    private ChatSessionState _state = ChatSessionState.Idle;
-    private bool _isLoadingHistory;
-    private bool _disposed;
+    private readonly Dictionary<string, ConversationViewModel> _conversations = new(StringComparer.OrdinalIgnoreCase);
     private bool _shuttingDown;
-    private bool _hasActiveTurn;
-    private TokenUsage _activeTurnUsage;
-    private bool _isSending;
-    private string _draftKey = "initial";
-    private readonly Dictionary<string, (string Text, ImageAttachmentViewModel[] Images)> _drafts = new(StringComparer.OrdinalIgnoreCase);
+    private bool _disposed;
 
     public MainViewModel(string? sessionRoot = null, Func<PiRpcClient>? rpcClientFactory = null, string? namesDirectory = null)
     {
         _sessionRoot = Path.GetFullPath(sessionRoot ?? GetDefaultSessionRoot());
         _rpcClientFactory = rpcClientFactory ?? (() => new PiRpcClient());
-        _nameStore = new SessionNameStore(namesDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pi Harbor", "session-names"));
+        var appDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pi Harbor");
+        _nameStore = new SessionNameStore(namesDirectory ?? Path.Combine(appDataDirectory, "session-names"));
+        _flagStore = new SessionFlagStore(namesDirectory is null
+            ? Path.Combine(appDataDirectory, "session-flags")
+            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(namesDirectory))!, "session-flags"));
+        _starredSessions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         _catalog = new SessionCatalog(_sessionRoot, _nameStore);
         _catalog.Changed += OnCatalogChanged;
         _uiContext = SynchronizationContext.Current;
 
-        RefreshCommand = new AsyncRelayCommand(RefreshCatalogAsync, () => State is not ChatSessionState.Starting);
-        SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
-        StopCommand = new AsyncRelayCommand(StopAsync, () => State == ChatSessionState.Streaming);
-        ReconnectCommand = new AsyncRelayCommand(ReconnectAsync, () => CanReconnect);
-        Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(MessageCountText));
-        Attachments.CollectionChanged += (_, _) =>
-        {
-            OnPropertyChanged(nameof(CanSend));
-            SendCommand.RaiseCanExecuteChanged();
-        };
+        RefreshCommand = new AsyncRelayCommand(RefreshCatalogAsync, () => true);
+        Active = CreateConversation("initial", "选择一个会话");
+        _ = LoadStarredSessionsAsync();
     }
 
+    public ConversationViewModel Active { get; private set; }
+
+    /// <summary>Raised when a background conversation settles a turn or its pi process fails.</summary>
+    public event Action<ConversationViewModel, string>? ConversationAttention;
+
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
-    public ObservableCollection<ModelOptionViewModel> Models { get; } = [];
-    public ObservableCollection<ImageAttachmentViewModel> Attachments { get; } = [];
-    public ObservableCollection<ComposerSuggestion> SlashCommands { get; } = [];
-    public string CommandLoadStatus { get; private set; } = "选择会话后加载 Pi 命令与 skills";
-    public bool CanEditComposer => !_isSending;
-    public BulkObservableCollection<ChatItemViewModel> Messages { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
-    public AsyncRelayCommand SendCommand { get; }
-    public AsyncRelayCommand StopCommand { get; }
-    public AsyncRelayCommand ReconnectCommand { get; }
+    public AsyncRelayCommand SendCommand => Active.SendCommand;
+    public AsyncRelayCommand StopCommand => Active.StopCommand;
+    public AsyncRelayCommand ReconnectCommand => Active.ReconnectCommand;
     public string AppVersionText => $"v{ApplicationVersion}";
     public string WindowTitle => $"{ProductName} {ApplicationVersion} — {ProductSubtitle}";
 
+    // Forwarded conversation state; the active conversation can change at any time.
+    public BulkObservableCollection<ChatItemViewModel> Messages => Active.Messages;
+    public ObservableCollection<ImageAttachmentViewModel> Attachments => Active.Attachments;
+    public ObservableCollection<ComposerSuggestion> SlashCommands => Active.SlashCommands;
+    public ObservableCollection<ModelOptionViewModel> Models => Active.Models;
+    public string CommandLoadStatus => Active.CommandLoadStatus;
     public string InputText
     {
-        get => _inputText;
-        set
+        get => Active.InputText;
+        set => Active.InputText = value;
+    }
+    public string CurrentTitle => Active.Title;
+    public string CurrentCwd => Active.Cwd;
+    public string ModelText => Active.ModelText;
+    public ModelOptionViewModel? SelectedModel => Active.SelectedModel;
+    public string StatusText => Active.StatusText;
+    public bool CanEditComposer => Active.CanEditComposer;
+    public string? SelectedSessionPath => Active.SessionPath;
+    public ChatSessionState State => Active.State;
+    public bool CanSend => Active.CanSend;
+    public bool CanSwitchSession => Active.CanSwitchSession;
+    public bool CanChangeModel => Active.CanChangeModel;
+    public bool IsStreaming => Active.IsStreaming;
+    public bool CanReconnect => Active.CanReconnect;
+    public string EmptyConversationText => Active.EmptyConversationText;
+    public string MessageCountText => Active.MessageCountText;
+    public string TotalTokensText => Active.TotalTokensText;
+    public bool IsLoadingHistory => Active.IsLoadingHistory;
+
+    /// <summary>Number of open conversations that finished (or failed) without being viewed.</summary>
+    public int UnreadCount => _conversations.Values.Count(conversation => conversation.HasUnread);
+    public int BusyCount => _conversations.Values.Count(conversation => conversation.IsBusy);
+    public string BackgroundActivityText
+    {
+        get
         {
-            if (SetProperty(ref _inputText, value))
-            {
-                OnPropertyChanged(nameof(CanSend));
-                SendCommand.RaiseCanExecuteChanged();
-            }
+            var parts = new List<string>();
+            var unread = UnreadCount;
+            if (unread > 0) parts.Add($"{unread} 条未读");
+            return parts.Count == 0 ? string.Empty : string.Join(" · ", parts);
         }
-    }
-
-    public string CurrentTitle
-    {
-        get => _currentTitle;
-        private set => SetProperty(ref _currentTitle, value);
-    }
-
-    public string CurrentCwd
-    {
-        get => _currentCwd;
-        private set => SetProperty(ref _currentCwd, value);
-    }
-
-    public string ModelText
-    {
-        get => _modelText;
-        private set => SetProperty(ref _modelText, value);
-    }
-
-    public ModelOptionViewModel? SelectedModel
-    {
-        get => _selectedModel;
-        set => SetProperty(ref _selectedModel, value);
-    }
-
-    public string StatusText
-    {
-        get => _statusText;
-        private set => SetProperty(ref _statusText, value);
-    }
-
-    public string? SelectedSessionPath
-    {
-        get => _selectedSessionPath;
-        private set
-        {
-            if (SetProperty(ref _selectedSessionPath, value))
-            {
-                UpdateCurrentSessionState(value);
-            }
-        }
-    }
-
-    public ChatSessionState State
-    {
-        get => _state;
-        private set
-        {
-            if (!SetProperty(ref _state, value))
-            {
-                return;
-            }
-
-            StatusText = value switch
-            {
-                ChatSessionState.Idle => "就绪",
-                ChatSessionState.Starting => "正在启动 pi…",
-                ChatSessionState.Ready => "就绪",
-                ChatSessionState.SwitchingModel => "正在切换模型…",
-                ChatSessionState.Streaming => "pi 正在处理…",
-                ChatSessionState.Stopping => "正在停止…",
-                ChatSessionState.Faulted => "发生错误",
-                _ => string.Empty,
-            };
-            OnPropertyChanged(nameof(CanSend));
-            OnPropertyChanged(nameof(CanSwitchSession));
-            OnPropertyChanged(nameof(CanChangeModel));
-            OnPropertyChanged(nameof(IsStreaming));
-            OnPropertyChanged(nameof(CanReconnect));
-            OnPropertyChanged(nameof(EmptyConversationText));
-            RefreshCommand.RaiseCanExecuteChanged();
-            SendCommand.RaiseCanExecuteChanged();
-            StopCommand.RaiseCanExecuteChanged();
-            ReconnectCommand.RaiseCanExecuteChanged();
-        }
-    }
-
-    public bool CanSend => !_isSending && State == ChatSessionState.Ready && (!string.IsNullOrWhiteSpace(InputText) || Attachments.Count > 0);
-    public bool CanSwitchSession => !_isSending && State is ChatSessionState.Idle or ChatSessionState.Ready or ChatSessionState.Faulted;
-    public bool CanChangeModel => !_isSending && State == ChatSessionState.Ready && Models.Count > 0;
-    public bool IsStreaming => State is ChatSessionState.Streaming or ChatSessionState.Stopping;
-    public bool CanReconnect => CanSwitchSession && State == ChatSessionState.Faulted && Directory.Exists(CurrentCwd);
-    public string EmptyConversationText => State switch
-    {
-        ChatSessionState.Ready => "在下方输入消息，开始这个对话",
-        ChatSessionState.Starting => "正在准备对话…",
-        _ => "选择左侧会话，或新建一个对话",
-    };
-    public string MessageCountText => Messages.Count == 0 ? "尚无消息" : $"{Messages.Count} 项";
-
-    public bool IsLoadingHistory
-    {
-        get => _isLoadingHistory;
-        private set => SetProperty(ref _isLoadingHistory, value);
     }
 
     public async Task InitializeAsync()
@@ -228,7 +146,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            await ShowErrorAsync($"刷新会话失败：{exception.Message}").ConfigureAwait(false);
+            Active.ReportRecoverableError($"刷新会话失败：{exception.Message}");
         }
         finally
         {
@@ -240,256 +158,202 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task CreateSessionAsync(string cwd)
     {
         ThrowIfDisposed();
-        if (!CanSwitchSession)
-        {
-            return;
-        }
-
         if (!Directory.Exists(cwd))
         {
-            await ShowErrorAsync($"项目路径不存在：{cwd}").ConfigureAwait(false);
+            Active.ReportRecoverableError($"项目路径不存在：{cwd}");
             return;
         }
 
-        await RunOnUiAsync(() =>
+        var key = "new:" + Path.GetFullPath(cwd);
+        if (_conversations.TryGetValue(key, out var existing))
         {
-            State = ChatSessionState.Starting;
-            SwitchDraft("new:" + Path.GetFullPath(cwd));
-        }).ConfigureAwait(false);
-        await CloseRpcClientAsync().ConfigureAwait(false);
-        await RunOnUiAsync(() =>
-        {
-            Messages.Clear();
-            CurrentTitle = "新对话";
-            CurrentCwd = Path.GetFullPath(cwd);
-            SelectedSessionPath = null;
-            ModelText = string.Empty;
-            Models.Clear();
-            SelectedModel = null;
-            IsLoadingHistory = false;
-            ResetActiveTurn();
-        }).ConfigureAwait(false);
-        await StartRpcAsync(new PiStartOptions(Path.GetFullPath(cwd))).ConfigureAwait(false);
+            Activate(existing);
+            return;
+        }
+
+        var conversation = CreateConversation(key, "新对话");
+        _conversations[key] = conversation;
+        Activate(conversation);
+        await conversation.StartNewAsync(cwd).ConfigureAwait(false);
+        UpdateTreeState();
     }
 
     public async Task OpenSessionAsync(SessionSummary session)
     {
         ArgumentNullException.ThrowIfNull(session);
         ThrowIfDisposed();
-        if (!CanSwitchSession)
-        {
-            return;
-        }
-
         if (!Directory.Exists(session.Cwd))
         {
-            await ShowErrorAsync($"项目路径不存在：{session.Cwd}").ConfigureAwait(false);
+            Active.ReportRecoverableError($"项目路径不存在：{session.Cwd}");
             return;
         }
 
-        await RunOnUiAsync(() =>
+        var key = Path.GetFullPath(session.SessionPath);
+        if (_conversations.TryGetValue(key, out var existing))
         {
-            State = ChatSessionState.Starting;
-            SwitchDraft(Path.GetFullPath(session.SessionPath));
-        }).ConfigureAwait(false);
-        await CloseRpcClientAsync().ConfigureAwait(false);
-        await RunOnUiAsync(() =>
-        {
-            Messages.Clear();
-            CurrentTitle = session.Title;
-            CurrentCwd = session.Cwd;
-            SelectedSessionPath = session.SessionPath;
-            ModelText = string.Empty;
-            Models.Clear();
-            SelectedModel = null;
-            IsLoadingHistory = true;
-            ResetActiveTurn();
-        }).ConfigureAwait(false);
-        var historyTask = SessionHistoryReader.ReadAsync(session.SessionPath, CancellationToken.None);
-        await StartRpcAsync(new PiStartOptions(session.Cwd, session.SessionPath), historyTask).ConfigureAwait(false);
+            Activate(existing);
+            return;
+        }
+
+        var conversation = CreateConversation(key, session.Title);
+        _conversations[key] = conversation;
+        Activate(conversation);
+        await conversation.OpenAsync(session).ConfigureAwait(false);
+        UpdateTreeState();
     }
 
-    public async Task SendAsync()
+    private void Activate(ConversationViewModel conversation)
     {
-        ThrowIfDisposed();
-        var client = _rpcClient;
-        if (!CanSend || client is null)
+        if (ReferenceEquals(Active, conversation))
         {
+            conversation.HasUnread = false;
             return;
         }
 
-        var message = InputText.Trim();
-        var images = Attachments.ToArray();
-        if (message.Length == 0) message = "请分析这些图片。";
-        var sentItem = new ChatItemViewModel(ChatItemKind.User, message) { Images = images };
-        await RunOnUiAsync(() =>
+        var previous = Active;
+        Active = conversation;
+        // A draft typed before any session was chosen follows into the first opened conversation.
+        if (previous.Key == "initial" && (!string.IsNullOrWhiteSpace(previous.InputText) || previous.Attachments.Count > 0))
         {
-            _isSending = true;
-            OnPropertyChanged(nameof(CanEditComposer));
-            Messages.Add(sentItem);
-            _streamItems.Clear();
-            _toolItems.Clear();
-            _activeTurnUsage = default;
-            _hasActiveTurn = true;
-            _turnTimer.Restart();
-            State = ChatSessionState.Streaming;
-        }).ConfigureAwait(false);
-
-        try
-        {
-            await client.SendPromptAsync(message, images.Select(image => image.ToPromptImage()).ToArray(), CancellationToken.None).ConfigureAwait(false);
-            await RunOnUiAsync(() =>
+            if (string.IsNullOrWhiteSpace(conversation.InputText)) conversation.InputText = previous.InputText;
+            while (previous.Attachments.Count > 0 && conversation.Attachments.Count < ImageAttachmentViewModel.MaxImages)
             {
-                InputText = string.Empty;
-                Attachments.Clear();
-                _drafts.Remove(_draftKey);
-            }).ConfigureAwait(false);
-            // An extension can handle a command without starting an agent turn.
-            if (message.StartsWith('/'))
-            {
-                JsonElement state;
-                try { state = await client.RequestAsync("get_state", CancellationToken.None).ConfigureAwait(false); }
-                catch (Exception exception) when (exception is PiRpcException or IOException or ObjectDisposedException)
-                {
-                    await ShowErrorAsync($"命令已接受，但无法确认运行状态：{exception.Message}。请重新连接会话。").ConfigureAwait(false);
-                    return;
-                }
-                await RunOnUiAsync(() =>
-                {
-                    if (state.TryGetProperty("data", out var data) &&
-                        data.TryGetProperty("isStreaming", out var streaming) && !streaming.GetBoolean() && _hasActiveTurn)
-                    {
-                        ResetActiveTurn();
-                        State = ChatSessionState.Ready;
-                    }
-                }).ConfigureAwait(false);
+                var image = previous.Attachments[0];
+                previous.Attachments.RemoveAt(0);
+                conversation.Attachments.Add(image);
             }
         }
-        catch (Exception exception) when (exception is PiRpcException or IOException or ObjectDisposedException)
+
+        conversation.HasUnread = false;
+        foreach (var name in ForwardedPropertyNames)
         {
-            await RunOnUiAsync(() =>
-            {
-                ResetActiveTurn();
-                if (!string.IsNullOrEmpty(InputText) || Attachments.Count > 0) Messages.Remove(sentItem);
-                State = ChatSessionState.Faulted;
-                StatusText = $"发送未确认：{exception.Message}。草稿已保留；重新连接会话核对历史后再发送。";
-                Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));
-            }).ConfigureAwait(false);
+            OnPropertyChanged(name);
         }
-        finally
-        {
-            await RunOnUiAsync(() =>
-            {
-                _isSending = false;
-                OnPropertyChanged(nameof(CanEditComposer));
-                OnPropertyChanged(nameof(CanSend));
-                OnPropertyChanged(nameof(CanSwitchSession));
-                OnPropertyChanged(nameof(CanChangeModel));
-                OnPropertyChanged(nameof(CanReconnect));
-                ReconnectCommand.RaiseCanExecuteChanged();
-                SendCommand.RaiseCanExecuteChanged();
-            }).ConfigureAwait(false);
-        }
+        OnPropertyChanged(nameof(Active));
+        OnPropertyChanged(nameof(UnreadCount));
+        OnPropertyChanged(nameof(BackgroundActivityText));
+        UpdateTreeState();
     }
 
-    private void SwitchDraft(string key)
+    private static readonly string[] ForwardedPropertyNames =
+    [
+        nameof(Messages), nameof(Attachments), nameof(SlashCommands), nameof(Models), nameof(CommandLoadStatus),
+        nameof(InputText), nameof(CurrentTitle), nameof(CurrentCwd), nameof(ModelText), nameof(SelectedModel),
+        nameof(StatusText), nameof(CanEditComposer), nameof(SelectedSessionPath), nameof(State), nameof(CanSend), nameof(CanSwitchSession),
+        nameof(CanChangeModel), nameof(IsStreaming), nameof(CanReconnect), nameof(EmptyConversationText),
+        nameof(MessageCountText), nameof(TotalTokensText), nameof(IsLoadingHistory),
+        nameof(SendCommand), nameof(StopCommand), nameof(ReconnectCommand),
+    ];
+
+    private ConversationViewModel CreateConversation(string key, string title = "选择一个会话")
     {
-        var initialDraft = _draftKey == "initial";
-        var currentDraft = (Text: InputText, Images: Attachments.ToArray());
-        _drafts[_draftKey] = currentDraft;
-        _draftKey = key;
-        var draft = initialDraft ? currentDraft : _drafts.GetValueOrDefault(key);
-        if (initialDraft) _drafts.Remove("initial");
-        InputText = draft.Text ?? string.Empty;
-        Attachments.Clear();
-        foreach (var image in draft.Images ?? []) Attachments.Add(image);
-        SlashCommands.Clear();
-        CommandLoadStatus = "正在加载 Pi 命令与 skills…";
+        var conversation = new ConversationViewModel(key, _rpcClientFactory, _uiContext, title);
+        conversation.KeyChanged += OnConversationKeyChanged;
+        conversation.Attention += OnConversationAttention;
+        conversation.PropertyChanged += OnConversationPropertyChanged;
+        return conversation;
     }
 
-    public Task ReconnectAsync()
+    private void OnConversationKeyChanged(object? sender, (string OldKey, string NewKey) args)
     {
-        if (!CanReconnect) return Task.CompletedTask;
-        return SelectedSessionPath is { } path
-            ? OpenSessionAsync(new SessionSummary(path, CurrentCwd, CurrentTitle, DateTimeOffset.Now, DateTimeOffset.Now))
-            : CreateSessionAsync(CurrentCwd);
-    }
-
-    public bool AddAttachment(ImageAttachmentViewModel image)
-    {
-        if (!CanEditComposer) return false;
-        if (Attachments.Count >= ImageAttachmentViewModel.MaxImages)
-        {
-            ReportRecoverableError("每条消息最多添加 4 张图片，请移除后再添加。");
-            return false;
-        }
-        Attachments.Add(image);
-        return true;
-    }
-
-    public async Task StopAsync()
-    {
-        ThrowIfDisposed();
-        if (State != ChatSessionState.Streaming || _rpcClient is null)
+        if (sender is not ConversationViewModel conversation)
         {
             return;
         }
 
-        await RunOnUiAsync(() => State = ChatSessionState.Stopping).ConfigureAwait(false);
-        try
-        {
-            await _rpcClient.AbortAsync(CancellationToken.None).ConfigureAwait(false);
-            await RunOnUiAsync(() => State = ChatSessionState.Ready).ConfigureAwait(false);
-        }
-        catch (PiRpcException exception)
-        {
-            await ShowErrorAsync($"停止生成失败：{exception.Message}").ConfigureAwait(false);
-        }
+        _conversations.Remove(args.OldKey);
+        _conversations[args.NewKey] = conversation;
+        UpdateTreeState();
     }
 
-    public async Task SelectModelAsync(ModelOptionViewModel? model)
+    private void OnConversationPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
-        ThrowIfDisposed();
-        if (model is null || !CanChangeModel || _rpcClient is null ||
-            string.Equals(model.Key, ModelText, StringComparison.Ordinal))
+        if (sender is not ConversationViewModel conversation)
         {
             return;
         }
 
-        var previous = SelectedModel;
-        await RunOnUiAsync(() => State = ChatSessionState.SwitchingModel).ConfigureAwait(false);
-        try
+        if (ReferenceEquals(conversation, Active) && ForwardedPropertyNames.Contains(args.PropertyName))
         {
-            var response = await _rpcClient.RequestAsync(
-                "set_model",
-                new Dictionary<string, object?>
-                {
-                    ["provider"] = model.Provider,
-                    ["modelId"] = model.Id,
-                },
-                TimeSpan.FromSeconds(30),
-                CancellationToken.None).ConfigureAwait(false);
-            await RunOnUiAsync(() =>
-            {
-                ApplySelectedModel(response, model);
-                State = ChatSessionState.Ready;
-            }).ConfigureAwait(false);
+            OnPropertyChanged(args.PropertyName!);
         }
-        catch (Exception exception) when (exception is PiRpcException or IOException)
+
+        if (args.PropertyName is nameof(ConversationViewModel.HasUnread) or nameof(ConversationViewModel.IsBusy))
         {
-            await RunOnUiAsync(() =>
-            {
-                SelectedModel = previous;
-                State = ChatSessionState.Ready;
-                StatusText = $"模型切换失败：{exception.Message}";
-                Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));
-            }).ConfigureAwait(false);
+            OnPropertyChanged(nameof(UnreadCount));
+            OnPropertyChanged(nameof(BackgroundActivityText));
+            OnPropertyChanged(nameof(BusyCount));
+            UpdateTreeState();
         }
     }
 
-    public void ReportRecoverableError(string message)
+    private void OnConversationAttention(ConversationViewModel conversation, string kind)
     {
-        StatusText = message;
+        if (!ReferenceEquals(conversation, Active))
+        {
+            conversation.HasUnread = true;
+            OnPropertyChanged(nameof(UnreadCount));
+            OnPropertyChanged(nameof(BackgroundActivityText));
+        }
+
+        UpdateTreeState();
+        ConversationAttention?.Invoke(conversation, kind);
+    }
+
+    public Task SendAsync() => Active.SendAsync();
+    public Task StopAsync() => Active.StopAsync();
+    public Task SelectModelAsync(ModelOptionViewModel? model) => Active.SelectModelAsync(model);
+    public Task ReconnectAsync() => Active.ReconnectAsync();
+
+    public bool AddAttachment(ImageAttachmentViewModel image) => Active.AddAttachment(image);
+
+    public void ReportRecoverableError(string message) => Active.ReportRecoverableError(message);
+
+    /// <summary>Toggle the user's starred ("重点关注") marker for a session and persist it locally.</summary>
+    public async Task ToggleStarAsync(SessionSummary session)
+    {
+        ThrowIfDisposed();
+        var path = Path.GetFullPath(session.SessionPath);
+        var starred = !_starredSessions.Contains(path);
+        if (starred)
+        {
+            _starredSessions.Add(path);
+        }
+        else
+        {
+            _starredSessions.Remove(path);
+        }
+
+        UpdateTreeState();
+        try
+        {
+            await _flagStore.SaveAsync(_starredSessions).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Active.ReportRecoverableError($"保存重点关注标记失败：{exception.Message}");
+        }
+    }
+
+    public void RefreshRelativeActivityTimes(DateTimeOffset now)
+    {
+        foreach (var session in Projects.SelectMany(project => project.Sessions)) session.UpdateRelativeActivity(now);
+    }
+
+    internal void PrepareDocumentationDemo()
+    {
+        // Only synthetic conversation content is used for public screenshots.
+        Active.PrepareDocumentationDemo();
+        Messages.Clear();
+        Messages.Add(new ChatItemViewModel(ChatItemKind.User, "帮我整理这个项目的改进计划。"));
+        Messages.Add(new ChatItemViewModel(ChatItemKind.Assistant,
+            "## 从本地对话开始\n\nPi Harbor 将本机 Pi 会话按项目集中展示，方便找到最近的工作并继续交流。\n\n" +
+            "- **找回上下文**：查看历史文字、代码与工具结果。\n- **快速输入**：输入 @ 引用文件，输入 / 选择命令或 skill。\n- **图像交流**：粘贴截图，发送前点击缩略图检查。\n\n" +
+            "### 下一步\n\n| 任务 | 状态 |\n| --- | --- |\n| 明确需求 | 已完成 |\n| 检查实现 | 进行中 |\n| 验证结果 | 待开始 |\n\n" +
+            "> 这是公开截图的演示内容，不包含任何私人对话。"));
+        for (var i = 0; i < 8; i++)
+            Messages.Add(new ChatItemViewModel(ChatItemKind.System, $"演示步骤 {i + 1}：记录进展并核对结果，随时回到最新消息。"));
+        InputText = "请结合这张截图，继续完善输入体验。";
     }
 
     public async Task ShutdownAsync()
@@ -504,7 +368,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await _searchTask.ConfigureAwait(false);
         _catalog.Changed -= OnCatalogChanged;
         _catalog.Dispose();
-        await CloseRpcClientAsync().ConfigureAwait(false);
+        foreach (var conversation in _conversations.Values.ToArray())
+        {
+            conversation.KeyChanged -= OnConversationKeyChanged;
+            conversation.Attention -= OnConversationAttention;
+            conversation.PropertyChanged -= OnConversationPropertyChanged;
+            await conversation.DisposeAsync().ConfigureAwait(false);
+        }
+        _conversations.Clear();
     }
 
     public async ValueTask DisposeAsync()
@@ -516,523 +387,31 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         await ShutdownAsync().ConfigureAwait(false);
         _disposed = true;
+        _flagLock.Dispose();
         _catalogRefreshLock.Dispose();
     }
 
-    private async Task StartRpcAsync(
-        PiStartOptions options,
-        Task<SessionHistorySnapshot>? historyTask = null)
+    private async Task LoadStarredSessionsAsync()
     {
-        await RunOnUiAsync(() => State = ChatSessionState.Starting).ConfigureAwait(false);
-        var client = _rpcClientFactory();
-        client.EventReceived += OnRpcEventReceived;
-        client.Exited += OnRpcExited;
-        _rpcClient = client;
-
         try
         {
-            await client.StartAsync(options, CancellationToken.None).ConfigureAwait(false);
-            var stateTask = client.RequestAsync(
-                "get_state",
-                null,
-                TimeSpan.FromMinutes(2),
-                CancellationToken.None);
-            var modelsTask = RequestAvailableModelsAsync(client);
-            var commandsTask = RequestCommandsAsync(client);
-            if (historyTask is not null)
-            {
-                await ApplyLocalHistoryAsync(historyTask).ConfigureAwait(false);
-            }
-
-            var stateResponse = await stateTask.ConfigureAwait(false);
-            var modelsResponse = await modelsTask.ConfigureAwait(false);
-            var commandsResponse = await commandsTask.ConfigureAwait(false);
+            var starred = await _flagStore.LoadAsync().ConfigureAwait(false);
             await RunOnUiAsync(() =>
             {
-                ApplyStateResponse(stateResponse);
-                ApplyAvailableModels(modelsResponse);
-                ApplyCommands(commandsResponse);
-                State = ChatSessionState.Ready;
+                _starredSessions.Clear();
+                foreach (var path in starred) _starredSessions.Add(path);
+                UpdateTreeState();
             }).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is PiRpcException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            await RunOnUiAsync(() => IsLoadingHistory = false).ConfigureAwait(false);
-            await ShowErrorAsync($"打开 pi 会话失败：{exception.Message}").ConfigureAwait(false);
+            Active.ReportRecoverableError($"读取重点关注标记失败：{exception.Message}");
         }
     }
-
-    private async Task CloseRpcClientAsync()
-    {
-        var client = _rpcClient;
-        _rpcClient = null;
-        if (client is null)
-        {
-            return;
-        }
-
-        client.EventReceived -= OnRpcEventReceived;
-        client.Exited -= OnRpcExited;
-        await client.DisposeAsync().ConfigureAwait(false);
-    }
-
-    private void ApplyStateResponse(JsonElement response)
-    {
-        if (!response.TryGetProperty("data", out var data))
-        {
-            return;
-        }
-
-        if (data.TryGetProperty("sessionName", out var name) && name.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(name.GetString()))
-        {
-            CurrentTitle = name.GetString()!;
-        }
-
-        if (data.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.Object)
-        {
-            var provider = ReadString(model, "provider");
-            var id = ReadString(model, "id");
-            ModelText = string.IsNullOrWhiteSpace(provider) ? id : $"{provider}/{id}";
-        }
-        var sessionFile = ReadString(data, "sessionFile");
-        if (!string.IsNullOrWhiteSpace(sessionFile) && SelectedSessionPath is null)
-        {
-            SelectedSessionPath = sessionFile;
-            _drafts.Remove(_draftKey);
-            _draftKey = Path.GetFullPath(sessionFile);
-        }
-    }
-
-    private static async Task<JsonElement?> RequestCommandsAsync(PiRpcClient client)
-    {
-        try { return await client.RequestAsync("get_commands", null, TimeSpan.FromSeconds(10), CancellationToken.None).ConfigureAwait(false); }
-        catch (Exception exception) when (exception is PiRpcException or IOException) { return null; }
-    }
-
-    private void ApplyCommands(JsonElement? response)
-    {
-        SlashCommands.Clear();
-        CommandLoadStatus = "当前 Pi 未提供命令；可继续输入文字";
-        if (response is not { } value || !value.TryGetProperty("data", out var data) ||
-            !data.TryGetProperty("commands", out var commands) || commands.ValueKind != JsonValueKind.Array) return;
-        foreach (var command in commands.EnumerateArray())
-        {
-            var name = ReadString(command, "name");
-            if (string.IsNullOrWhiteSpace(name)) continue;
-            var source = ReadString(command, "source");
-            var category = source == "skill" ? "Skill" : source == "prompt" ? "提示模板" : "扩展命令";
-            SlashCommands.Add(new ComposerSuggestion("/" + name, category + " · " + ReadString(command, "description"), "/" + name + " "));
-        }
-        CommandLoadStatus = SlashCommands.Count == 0 ? "当前会话没有可用的命令或 skills" : "未找到匹配的命令或 skill";
-    }
-
-    private static async Task<JsonElement?> RequestAvailableModelsAsync(PiRpcClient client)
-    {
-        try
-        {
-            return await client.RequestAsync(
-                "get_available_models",
-                null,
-                TimeSpan.FromMinutes(2),
-                CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is PiRpcException or IOException)
-        {
-            return null;
-        }
-    }
-
-    private void ApplyAvailableModels(JsonElement? response)
-    {
-        Models.Clear();
-        if (response.HasValue && response.Value.TryGetProperty("data", out var data) &&
-            data.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in models.EnumerateArray())
-            {
-                var provider = ReadString(item, "provider");
-                var id = ReadString(item, "id");
-                if (!string.IsNullOrWhiteSpace(provider) && !string.IsNullOrWhiteSpace(id))
-                {
-                    Models.Add(new ModelOptionViewModel(provider, id, ReadString(item, "name")));
-                }
-            }
-        }
-
-        var current = Models.FirstOrDefault(model => string.Equals(model.Key, ModelText, StringComparison.Ordinal));
-        if (current is null && TrySplitModelKey(ModelText, out var fallbackProvider, out var fallbackId))
-        {
-            current = new ModelOptionViewModel(fallbackProvider, fallbackId, string.Empty);
-            Models.Insert(0, current);
-        }
-
-        SelectedModel = current;
-        OnPropertyChanged(nameof(CanChangeModel));
-    }
-
-    private void ApplySelectedModel(JsonElement response, ModelOptionViewModel fallback)
-    {
-        var selected = fallback;
-        if (response.TryGetProperty("data", out var data))
-        {
-            var provider = ReadString(data, "provider");
-            var id = ReadString(data, "id");
-            if (!string.IsNullOrWhiteSpace(provider) && !string.IsNullOrWhiteSpace(id))
-            {
-                selected = Models.FirstOrDefault(model => model.Provider == provider && model.Id == id)
-                    ?? new ModelOptionViewModel(provider, id, ReadString(data, "name"));
-            }
-        }
-
-        SelectedModel = selected;
-        ModelText = selected.Key;
-    }
-
-    private static bool TrySplitModelKey(string key, out string provider, out string id)
-    {
-        var separator = key.IndexOf('/');
-        if (separator > 0 && separator < key.Length - 1)
-        {
-            provider = key[..separator];
-            id = key[(separator + 1)..];
-            return true;
-        }
-
-        provider = string.Empty;
-        id = string.Empty;
-        return false;
-    }
-
-    private async Task ApplyLocalHistoryAsync(Task<SessionHistorySnapshot> historyTask)
-    {
-        try
-        {
-            var snapshot = await historyTask.ConfigureAwait(false);
-            var items = snapshot.Items.Select(CreateHistoryViewModel).ToArray();
-            await RunOnUiAsync(() => Messages.ReplaceAll(items)).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
-        {
-            await RunOnUiAsync(() => Messages.ReplaceAll(
-                [new ChatItemViewModel(ChatItemKind.Error, $"读取本地历史失败：{exception.Message}")])).ConfigureAwait(false);
-        }
-        finally
-        {
-            await RunOnUiAsync(() => IsLoadingHistory = false).ConfigureAwait(false);
-        }
-    }
-
-    private static ChatItemViewModel CreateHistoryViewModel(SessionHistoryItem item) =>
-        new(item.Kind, item.Text)
-        {
-            Title = item.Title,
-            Key = item.Key,
-            IsError = item.IsError,
-            IsCompleted = item.Kind == ChatItemKind.Tool,
-        };
-
-    private void OnRpcEventReceived(object? sender, PiRpcEvent rpcEvent)
-    {
-        _ = HandleRpcEventAsync(rpcEvent);
-    }
-
-    private async Task HandleRpcEventAsync(PiRpcEvent rpcEvent)
-    {
-        try
-        {
-            await RunOnUiAsync(() => ApplyRpcEvent(rpcEvent)).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or JsonException)
-        {
-            await ShowErrorAsync($"处理 pi 事件失败：{exception.Message}").ConfigureAwait(false);
-        }
-    }
-
-    private void ApplyRpcEvent(PiRpcEvent rpcEvent)
-    {
-        switch (rpcEvent.Type)
-        {
-            case "agent_start":
-                State = ChatSessionState.Streaming;
-                break;
-            case "agent_settled":
-                CompleteStreamItems();
-                CompleteActiveTurn();
-                State = ChatSessionState.Ready;
-                break;
-            case "message_start":
-                if (rpcEvent.Payload.TryGetProperty("message", out var startMessage) && ReadString(startMessage, "role") == "assistant")
-                {
-                    _streamItems.Clear();
-                }
-                break;
-            case "message_update":
-                ApplyMessageUpdate(rpcEvent.Payload);
-                break;
-            case "message_end":
-                ApplyMessageEnd(rpcEvent.Payload);
-                break;
-            case "tool_execution_start":
-            case "tool_execution_update":
-            case "tool_execution_end":
-                ApplyToolEvent(rpcEvent.Type, rpcEvent.Payload);
-                break;
-            case "extension_error":
-                Messages.Add(new ChatItemViewModel(ChatItemKind.Error, $"扩展错误：{rpcEvent.Payload}"));
-                break;
-        }
-    }
-
-    private void ApplyMessageUpdate(JsonElement payload)
-    {
-        if (!payload.TryGetProperty("assistantMessageEvent", out var deltaEvent))
-        {
-            return;
-        }
-
-        var eventType = ReadString(deltaEvent, "type");
-        var contentIndex = deltaEvent.TryGetProperty("contentIndex", out var indexElement) && indexElement.TryGetInt32(out var nIndex)
-            ? nIndex
-            : -1;
-        if (contentIndex < 0)
-        {
-            return;
-        }
-
-        switch (eventType)
-        {
-            case "text_start":
-                GetOrCreateStreamItem(contentIndex, ChatItemKind.Assistant);
-                break;
-            case "text_delta":
-                GetOrCreateStreamItem(contentIndex, ChatItemKind.Assistant).Append(ReadString(deltaEvent, "delta"));
-                break;
-            case "thinking_start":
-                GetOrCreateStreamItem(contentIndex, ChatItemKind.Thinking);
-                break;
-            case "thinking_delta":
-                GetOrCreateStreamItem(contentIndex, ChatItemKind.Thinking).Append(ReadString(deltaEvent, "delta"));
-                break;
-            case "toolcall_start":
-            {
-                var toolName = ReadString(deltaEvent, "toolName");
-                var toolId = ReadString(deltaEvent, "id");
-                var item = GetOrCreateStreamItem(contentIndex, ChatItemKind.Tool);
-                item.Title = $"工具：{toolName}";
-                item.Key = toolId;
-                if (!string.IsNullOrWhiteSpace(toolId))
-                {
-                    _toolItems[toolId] = item;
-                }
-                break;
-            }
-            case "toolcall_delta":
-                GetOrCreateStreamItem(contentIndex, ChatItemKind.Tool).Append(ReadString(deltaEvent, "delta"));
-                break;
-        }
-    }
-
-    private void ApplyMessageEnd(JsonElement payload)
-    {
-        if (!payload.TryGetProperty("message", out var message))
-        {
-            return;
-        }
-
-        _activeTurnUsage += ReadUsage(message);
-        if (ReadString(message, "role") != "assistant")
-        {
-            return;
-        }
-
-        var stopReason = ReadString(message, "stopReason");
-        if (stopReason == "error")
-        {
-            CompleteStreamItems();
-            var errorMessage = ReadString(message, "errorMessage");
-            Messages.Add(new ChatItemViewModel(
-                ChatItemKind.Error,
-                string.IsNullOrWhiteSpace(errorMessage) ? "模型返回未知错误。" : errorMessage));
-            return;
-        }
-
-        if (stopReason == "aborted")
-        {
-            Messages.Add(new ChatItemViewModel(ChatItemKind.System, "已停止生成。"));
-        }
-
-        if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
-        {
-            CompleteStreamItems();
-            return;
-        }
-
-        var nIndex = 0;
-        foreach (var part in content.EnumerateArray())
-        {
-            var type = ReadString(part, "type");
-            if (type == "text")
-            {
-                GetOrCreateStreamItem(nIndex, ChatItemKind.Assistant).Text = ReadString(part, "text");
-            }
-            else if (type == "thinking")
-            {
-                GetOrCreateStreamItem(nIndex, ChatItemKind.Thinking).Text = ReadString(part, "thinking");
-            }
-            else if (type == "toolCall")
-            {
-                var item = GetOrCreateStreamItem(nIndex, ChatItemKind.Tool);
-                var name = ReadString(part, "name");
-                var id = ReadString(part, "id");
-                item.Title = $"工具：{name}";
-                item.Key = id;
-                if (!item.IsCompleted)
-                {
-                    item.Text = part.TryGetProperty("arguments", out var arguments) ? arguments.ToString() : string.Empty;
-                }
-                if (!string.IsNullOrWhiteSpace(id))
-                {
-                    _toolItems[id] = item;
-                }
-            }
-
-            nIndex++;
-        }
-
-        CompleteStreamItems();
-    }
-
-    private void ApplyToolEvent(string eventType, JsonElement payload)
-    {
-        var id = ReadString(payload, "toolCallId");
-        var name = ReadString(payload, "toolName");
-        if (!_toolItems.TryGetValue(id, out var item))
-        {
-            item = new ChatItemViewModel(ChatItemKind.Tool, string.Empty) { Key = id, IsStreaming = true };
-            _toolItems[id] = item;
-            Messages.Add(item);
-        }
-
-        item.Title = eventType == "tool_execution_end" ? $"工具完成：{name}" : $"正在执行：{name}";
-        if (eventType == "tool_execution_start" && payload.TryGetProperty("args", out var args))
-        {
-            item.Text = args.ToString();
-        }
-        else if (eventType == "tool_execution_update" && payload.TryGetProperty("partialResult", out var partialResult))
-        {
-            item.Text = ReadResultText(partialResult);
-        }
-        else if (eventType == "tool_execution_end")
-        {
-            item.Text = payload.TryGetProperty("result", out var result) ? ReadResultText(result) : string.Empty;
-            item.IsError = payload.TryGetProperty("isError", out var isError) && isError.ValueKind == JsonValueKind.True;
-            item.IsCompleted = true;
-            item.IsStreaming = false;
-        }
-    }
-
-    private ChatItemViewModel GetOrCreateStreamItem(int nContentIndex, ChatItemKind kind)
-    {
-        if (_streamItems.TryGetValue(nContentIndex, out var item))
-        {
-            return item;
-        }
-
-        item = new ChatItemViewModel(kind, string.Empty) { IsStreaming = true };
-        _streamItems[nContentIndex] = item;
-        Messages.Add(item);
-        return item;
-    }
-
-    private void CompleteStreamItems()
-    {
-        foreach (var item in _streamItems.Values)
-        {
-            item.IsStreaming = false;
-        }
-    }
-
-    private void CompleteActiveTurn()
-    {
-        if (!_hasActiveTurn)
-        {
-            return;
-        }
-
-        _turnTimer.Stop();
-        var metrics = new TurnMetrics(_activeTurnUsage, _turnTimer.Elapsed);
-        Messages.Add(new ChatItemViewModel(ChatItemKind.Metrics, metrics.ToDisplayText()));
-        _hasActiveTurn = false;
-    }
-
-    private void ResetActiveTurn()
-    {
-        _turnTimer.Reset();
-        _activeTurnUsage = default;
-        _hasActiveTurn = false;
-    }
-
-    private static string ReadContentText(JsonElement container)
-    {
-        if (!container.TryGetProperty("content", out var content))
-        {
-            return string.Empty;
-        }
-
-        if (content.ValueKind == JsonValueKind.String)
-        {
-            return content.GetString() ?? string.Empty;
-        }
-
-        if (content.ValueKind != JsonValueKind.Array)
-        {
-            return content.ToString();
-        }
-
-        return string.Join(
-            Environment.NewLine,
-            content.EnumerateArray()
-                .Where(part => ReadString(part, "type") == "text")
-                .Select(part => ReadString(part, "text"))
-                .Where(text => !string.IsNullOrEmpty(text)));
-    }
-
-    private static string ReadResultText(JsonElement result) => ReadContentText(result);
-
-    private static string ReadString(JsonElement element, string propertyName)
-    {
-        return element.ValueKind == JsonValueKind.Object &&
-               element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
-            ? property.GetString() ?? string.Empty
-            : string.Empty;
-    }
-
-    private static TokenUsage ReadUsage(JsonElement message)
-    {
-        if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
-        {
-            return default;
-        }
-
-        return new TokenUsage(
-            ReadInt64(usage, "input"),
-            ReadInt64(usage, "output"),
-            ReadInt64(usage, "cacheRead"),
-            ReadInt64(usage, "cacheWrite"),
-            ReadInt64(usage, "reasoning"),
-            ReadInt64(usage, "totalTokens"));
-    }
-
-    private static long ReadInt64(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) &&
-        value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var result)
-            ? result
-            : 0;
 
     private void ReplaceProjects(CatalogSnapshot snapshot)
     {
-        if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle) StatusText = snapshot.Warnings[0];
+        if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle) Active.ReportRecoverableError(snapshot.Warnings[0]);
         var previous = Projects.SelectMany(project => project.Sessions).Select(item => item.Session);
         var incoming = snapshot.Projects.SelectMany(project => project.Sessions);
         if (previous.SequenceEqual(incoming)) return;
@@ -1041,59 +420,45 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Projects.Clear();
         foreach (var project in snapshot.Projects)
         {
-            var item = new ProjectGroupViewModel(project, SelectedSessionPath) { IsExpanded = expansion.GetValueOrDefault(project.Cwd, true) };
+            var item = new ProjectGroupViewModel(project)
+            {
+                IsExpanded = expansion.GetValueOrDefault(project.Cwd, true),
+            };
             foreach (var session in item.Sessions) session.IsLatest = AreSameSessionPath(session.SessionPath, latestPath);
             Projects.Add(item);
         }
-        var selected = snapshot.Projects.SelectMany(project => project.Sessions).FirstOrDefault(session => AreSameSessionPath(session.SessionPath, SelectedSessionPath));
-        if (selected is not null) CurrentTitle = selected.Title;
+        UpdateTreeState();
         ScheduleSearch(catalogChanged: true);
 
         if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle)
         {
-            StatusText = $"已加载 {snapshot.SessionCount} 个会话，跳过 {snapshot.SkippedFileCount} 个异常文件";
+            Active.ReportRecoverableError($"已加载 {snapshot.SessionCount} 个会话，跳过 {snapshot.SkippedFileCount} 个异常文件");
         }
     }
 
-    public void RefreshRelativeActivityTimes(DateTimeOffset now)
-    {
-        foreach (var session in Projects.SelectMany(project => project.Sessions)) session.UpdateRelativeActivity(now);
-    }
-
-    internal void PrepareDocumentationDemo()
-    {
-        // Only synthetic conversation content is used for public screenshots.
-        CurrentTitle = "Pi Harbor 使用演示";
-        CurrentCwd = "示例对话 · 左侧真实项目名称与会话标题已遮挡";
-        StatusText = "本地会话自动发现已开启";
-        ModelText = "";
-        Models.Clear();
-        SelectedModel = new ModelOptionViewModel("demo", "model", "模型示例");
-        Models.Add(SelectedModel);
-        var latest = Projects.SelectMany(project => project.Sessions).FirstOrDefault();
-        if (latest is not null) latest.IsCurrent = true;
-        Messages.Clear();
-        Messages.Add(new ChatItemViewModel(ChatItemKind.User, "帮我整理这个项目的改进计划。"));
-        Messages.Add(new ChatItemViewModel(ChatItemKind.Assistant,
-            "## 从本地对话开始\n\nPi Harbor 将本机 Pi 会话按项目集中展示，方便找到最近的工作并继续交流。\n\n" +
-            "- **找回上下文**：查看历史文字、代码与工具结果。\n- **快速输入**：输入 @ 引用文件，输入 / 选择命令或 skill。\n- **图像交流**：粘贴截图，发送前点击缩略图检查。\n\n" +
-            "### 下一步\n\n| 任务 | 状态 |\n| --- | --- |\n| 明确需求 | 已完成 |\n| 检查实现 | 进行中 |\n| 验证结果 | 待开始 |\n\n" +
-            "> 这是公开截图的演示内容，不包含任何私人对话。"));
-        for (var i = 0; i < 8; i++)
-            Messages.Add(new ChatItemViewModel(ChatItemKind.System, $"演示步骤 {i + 1}：记录进展并核对结果，随时回到最新消息。"));
-        InputText = "请结合这张截图，继续完善输入体验。";
-    }
-
-    private void UpdateCurrentSessionState(string? selectedSessionPath)
+    /// <summary>Sync the sidebar tree with open conversations: current, busy, unread, starred and live title.</summary>
+    private void UpdateTreeState()
     {
         foreach (var session in Projects.SelectMany(project => project.Sessions))
         {
-            session.IsCurrent = AreSameSessionPath(session.SessionPath, selectedSessionPath);
+            var sessionPath = Path.GetFullPath(session.SessionPath);
+            session.IsCurrent = AreSameSessionPath(session.SessionPath, Active.Key);
+            _conversations.TryGetValue(sessionPath, out var conversation);
+            session.IsOpen = conversation is not null;
+            session.IsBusy = conversation is { IsBusy: true };
+            session.HasUnread = conversation is { HasUnread: true };
+            session.IsStarred = _starredSessions.Contains(sessionPath);
+            if (conversation is { Title.Length: > 0 } live && live.Title != "新对话" &&
+                !_customRenames.Contains(sessionPath) && live.Title != session.Title)
+            {
+                session.UpdateTitle(live.Title);
+            }
         }
     }
 
     private static bool AreSameSessionPath(string sessionPath, string? selectedSessionPath) =>
         !string.IsNullOrWhiteSpace(selectedSessionPath) &&
+        !selectedSessionPath.StartsWith("new:", StringComparison.Ordinal) &&
         string.Equals(
             Path.GetFullPath(sessionPath),
             Path.GetFullPath(selectedSessionPath),
@@ -1113,24 +478,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (ObjectDisposedException)
         {
         }
-    }
-
-    private void OnRpcExited(object? sender, int exitCode)
-    {
-        if (!_shuttingDown && State is not ChatSessionState.Idle)
-        {
-            _ = ShowErrorAsync($"pi RPC 进程已退出，退出码：{exitCode}。");
-        }
-    }
-
-    private async Task ShowErrorAsync(string message)
-    {
-        await RunOnUiAsync(() =>
-        {
-            Messages.Add(new ChatItemViewModel(ChatItemKind.Error, message));
-            State = ChatSessionState.Faulted;
-            StatusText = message;
-        }).ConfigureAwait(false);
     }
 
     private Task RunOnUiAsync(Action action)
@@ -1167,19 +514,13 @@ public sealed class ProjectGroupViewModel : ObservableObject
 {
     private bool _isExpanded = true;
     public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
-    public ProjectGroupViewModel(ProjectGroup project, string? selectedSessionPath = null)
+    public ProjectGroupViewModel(ProjectGroup project)
     {
         Cwd = project.Cwd;
         DisplayName = project.DisplayName;
         LastActivityAt = project.LastActivityAt;
         Sessions = new ObservableCollection<SessionItemViewModel>(project.Sessions.Select(session =>
-            new SessionItemViewModel(
-                session,
-                !string.IsNullOrWhiteSpace(selectedSessionPath) &&
-                string.Equals(
-                    Path.GetFullPath(session.SessionPath),
-                    Path.GetFullPath(selectedSessionPath),
-                    StringComparison.OrdinalIgnoreCase))));
+            new SessionItemViewModel(session)));
     }
 
     public string Cwd { get; }
@@ -1197,12 +538,40 @@ public sealed class ModelOptionViewModel(string provider, string id, string name
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Key : $"{Name} · {Key}";
 }
 
-public sealed class SessionItemViewModel(SessionSummary session, bool isCurrent = false) : ObservableObject
+public sealed class SessionItemViewModel(SessionSummary session) : ObservableObject
 {
-    private bool _isCurrent = isCurrent;
+    private SessionSummary _session = session;
+    private bool _isCurrent;
+    private bool _isOpen;
+    private bool _isBusy;
+    private bool _hasUnread;
+    private bool _isStarred;
+    private bool _isLatest;
     private string _relativeActivityText = RelativeActivityTime.Format(session.LastActivityAt, DateTimeOffset.Now);
+
+    public SessionSummary Session
+    {
+        get => _session;
+        private set => SetProperty(ref _session, value);
+    }
+
+    public void UpdateTitle(string title)
+    {
+        if (!string.IsNullOrWhiteSpace(title) && !string.Equals(Title, title, StringComparison.Ordinal))
+        {
+            Session = Session with { Title = title };
+            OnPropertyChanged(nameof(ActivityToolTip));
+        }
+    }
+
     public bool IsExpanded { get; set; }
-    public bool IsLatest { get; set; }
+    public bool IsLatest { get => _isLatest; set => SetProperty(ref _isLatest, value); }
+    public bool IsCurrent { get => _isCurrent; set => SetProperty(ref _isCurrent, value); }
+    public bool IsOpen { get => _isOpen; set => SetProperty(ref _isOpen, value); }
+    public bool IsBusy { get => _isBusy; set => SetProperty(ref _isBusy, value); }
+    public bool HasUnread { get => _hasUnread; set => SetProperty(ref _hasUnread, value); }
+    public bool IsStarred { get => _isStarred; set => SetProperty(ref _isStarred, value); }
+
     public string RelativeActivityText => _relativeActivityText;
     public string ActivityToolTip => $"{Title}\n最后活动：{LastActivityAt.ToLocalTime():yyyy-MM-dd HH:mm}";
     public void UpdateRelativeActivity(DateTimeOffset now)
@@ -1211,17 +580,12 @@ public sealed class SessionItemViewModel(SessionSummary session, bool isCurrent 
             OnPropertyChanged(nameof(ActivityToolTip));
     }
 
-    public SessionSummary Session { get; } = session;
     public string SessionPath => Session.SessionPath;
     public string Title => Session.Title;
     public string Cwd => Session.Cwd;
     public DateTimeOffset LastActivityAt => Session.LastActivityAt;
 
-    public bool IsCurrent
-    {
-        get => _isCurrent;
-        set => SetProperty(ref _isCurrent, value);
-    }
+    public string StarMenuHeader => IsStarred ? "★ 取消重点关注" : "☆ 标为重点关注";
 }
 
 public sealed class ChatItemViewModel : ObservableObject
@@ -1233,6 +597,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private bool _isCompleted;
     private bool _isStreaming;
     private bool _isExpanded;
+    private bool _isHighlighted;
 
     public ChatItemViewModel(ChatItemKind kind, string text)
     {
@@ -1283,6 +648,13 @@ public sealed class ChatItemViewModel : ObservableObject
     {
         get => _isExpanded;
         set => SetProperty(ref _isExpanded, value);
+    }
+
+    /// <summary>Briefly set when a global search jumps to this message.</summary>
+    public bool IsHighlighted
+    {
+        get => _isHighlighted;
+        set => SetProperty(ref _isHighlighted, value);
     }
 
     public void Append(string text)

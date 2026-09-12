@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using PIHarness.App.Presentation;
 using PIHarness.App.ViewModels;
 using Microsoft.Win32;
@@ -81,6 +82,13 @@ public partial class MainWindow
             if (args.Key == Key.Enter && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) args.Handled = true;
             return;
         }
+        // The TextBox paste command stays disabled for image-only clipboards, so Ctrl+V must read the
+        // clipboard directly to support pasting screenshots into the composer.
+        if (args.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && TryPasteImageFromClipboard())
+        {
+            args.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers != ModifierKeys.None || CompletionPanel.Visibility != Visibility.Visible) return;
         if (args.Key == Key.Escape)
         {
@@ -134,7 +142,12 @@ public partial class MainWindow
         if (!_viewModel.CanEditComposer) { args.CancelCommand(); return; }
         try
         {
-            if (args.DataObject.GetDataPresent(DataFormats.Bitmap))
+            if (args.DataObject.GetDataPresent("PNG") && args.DataObject.GetData("PNG") is Stream pngStream)
+            {
+                args.CancelCommand();
+                AddPngStream(pngStream);
+            }
+            else if (args.DataObject.GetDataPresent(DataFormats.Bitmap))
             {
                 args.CancelCommand();
                 if (args.DataObject.GetData(DataFormats.Bitmap) is System.Windows.Media.Imaging.BitmapSource bitmap)
@@ -153,6 +166,54 @@ public partial class MainWindow
             _viewModel.ReportRecoverableError($"粘贴图片失败：{exception.Message}");
         }
     }
+
+    /// <summary>Paste an image when the clipboard carries no text; returns true when the paste was consumed.</summary>
+    private bool TryPasteImageFromClipboard()
+    {
+        if (!_viewModel.CanEditComposer) return false;
+        try
+        {
+            if (Clipboard.ContainsText(TextDataFormat.UnicodeText) || Clipboard.ContainsText(TextDataFormat.Text))
+            {
+                return false; // Text wins so regular copy/paste keeps its default behavior.
+            }
+            if (Clipboard.ContainsFileDropList())
+            {
+                var imagePaths = Clipboard.GetFileDropList().Cast<string>().Where(IsImageFilePath).ToArray();
+                if (imagePaths.Length == 0) return false;
+                AddImageFiles(imagePaths);
+                return true;
+            }
+            if (!Clipboard.ContainsImage()) return false;
+            var data = Clipboard.GetDataObject();
+            if (data?.GetDataPresent("PNG") is true && data.GetData("PNG") is Stream pngStream)
+            {
+                AddPngStream(pngStream);
+                return true;
+            }
+            var bitmap = Clipboard.GetImage();
+            if (bitmap is null)
+            {
+                _viewModel.ReportRecoverableError("剪贴板图片无法读取，请重新截图后再粘贴。");
+                return true;
+            }
+            _viewModel.AddAttachment(ImageAttachmentViewModel.FromBitmap(bitmap, $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
+            return true;
+        }
+        catch (Exception exception) when (IsImageError(exception))
+        {
+            _viewModel.ReportRecoverableError($"粘贴图片失败：{exception.Message}");
+            return true;
+        }
+    }
+
+    private void AddPngStream(Stream pngStream)
+    {
+        var decoder = BitmapDecoder.Create(pngStream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        _viewModel.AddAttachment(ImageAttachmentViewModel.FromBitmap(decoder.Frames[0], $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
+    }
+
+    private static bool IsImageFilePath(string path) => Path.GetExtension(path) is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff";
 
     private void OnAttachImageClick(object sender, RoutedEventArgs args)
     {

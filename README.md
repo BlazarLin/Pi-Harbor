@@ -7,7 +7,7 @@
 
 按项目浏览本机 Pi 会话，找回最近的交流，继续文字与图片对话。无需启动本地 Web 服务。
 
-**源码版本：1.4.0 · 已验证 Pi：0.84.3 · Windows 10/11 x64**
+**源码版本：1.5.0 · 已验证 Pi：0.84.3 · Windows 10/11 x64**
 
 ## 软件截图
 
@@ -123,7 +123,7 @@ powershell -NoProfile -File scripts/build-release.ps1 -IncludeInstaller
 
 ### GitHub Release 配置
 
-已提供 Windows CI 和版本标签发布工作流。推送与项目版本一致的标签（当前源码为 `v1.4.0`）后，自动测试、打包并创建带 **安装 EXE、便携 ZIP、SHA256SUMS** 的 Release 草稿；维护者检查后点击 Publish release，用户即可下载。
+已提供 Windows CI 和版本标签发布工作流。推送与项目版本一致的标签（当前源码为 `v1.5.0`）后，自动测试、打包并创建带 **安装 EXE、便携 ZIP、SHA256SUMS** 的 Release 草稿；维护者检查后点击 Publish release，用户即可下载。
 
 详细设置、标签命令、手动构建、权限与签名说明见 [GitHub 发布指南](docs/GITHUB_RELEASE.md)。
 
