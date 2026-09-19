@@ -215,7 +215,7 @@ internal static class MainViewModelTests
             var client = new PiRpcClient(options => CreateFakeStartInfo(options, commandLog, nStateDelayMs));
             capturedClients.Add(client);
             return client;
-        }, namesDirectory);
+        }, namesDirectory ?? Path.Combine(sessionRoot, ".harbor-test", "names"));
     }
 
     private static ProcessStartInfo CreateFakeStartInfo(PiStartOptions options, string? commandLog, int nStateDelayMs)

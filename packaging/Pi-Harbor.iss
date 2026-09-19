@@ -51,4 +51,7 @@ Name: "{autodesktop}\Pi Harbor"; Filename: "{app}\Pi-Harbor.exe"; Tasks: desktop
 [Run]
 Filename: "{app}\Pi-Harbor.exe"; Description: "Launch Pi Harbor"; Flags: nowait postinstall skipifsilent
 
+[UninstallRun]
+Filename: "{app}\Pi-Harbor.exe"; Parameters: "--uninstall-notifications"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveToastRegistration"
+
 ; No user-session, project, credential, or settings directories are removed on uninstall.

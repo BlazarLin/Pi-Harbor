@@ -46,6 +46,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
         StopCommand = new AsyncRelayCommand(StopAsync, () => State == ChatSessionState.Streaming);
         ReconnectCommand = new AsyncRelayCommand(ReconnectAsync, () => CanReconnect);
+        ReloadCommand = new AsyncRelayCommand(ReloadAsync, () => CanReload);
     }
 
     /// <summary>Identity inside <see cref="MainViewModel"/>: the session file path, or "new:cwd" before pi persists one.</summary>
@@ -66,6 +67,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand SendCommand { get; }
     public AsyncRelayCommand StopCommand { get; }
     public AsyncRelayCommand ReconnectCommand { get; }
+    public AsyncRelayCommand ReloadCommand { get; }
 
     public string InputText
     {
@@ -136,6 +138,9 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(CanChangeModel));
             OnPropertyChanged(nameof(IsStreaming));
             OnPropertyChanged(nameof(CanReconnect));
+            OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(CanReload));
+            ReloadCommand.RaiseCanExecuteChanged();
             OnPropertyChanged(nameof(EmptyConversationText));
             SendCommand.RaiseCanExecuteChanged();
             StopCommand.RaiseCanExecuteChanged();
@@ -149,6 +154,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
     public bool IsStreaming => State is ChatSessionState.Streaming or ChatSessionState.Stopping;
     public bool IsBusy => State is ChatSessionState.Streaming or ChatSessionState.Stopping or ChatSessionState.Starting or ChatSessionState.SwitchingModel;
     public bool CanReconnect => CanSwitchSession && State == ChatSessionState.Faulted && Directory.Exists(Cwd);
+    public bool CanReload => !_isSending && !_hasActiveTurn && State == ChatSessionState.Ready && Directory.Exists(Cwd);
     public string EmptyConversationText => State switch
     {
         ChatSessionState.Ready => "在下方输入消息，开始这个对话",
@@ -222,6 +228,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         {
             State = ChatSessionState.Starting;
             Messages.Clear();
+            SessionPath = Path.GetFullPath(session.SessionPath);
             Title = session.Title;
             Cwd = session.Cwd;
             ModelText = string.Empty;
@@ -244,6 +251,12 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         }
 
         var message = InputText.Trim();
+        if (message.Equals("/reload", StringComparison.OrdinalIgnoreCase) && Attachments.Count == 0)
+        {
+            InputText = string.Empty;
+            await ReloadAsync();
+            return;
+        }
         var images = Attachments.ToArray();
         if (message.Length == 0) message = "请分析这些图片。";
         var sentItem = new ChatItemViewModel(ChatItemKind.User, message) { Images = images };
@@ -312,6 +325,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(CanChangeModel));
                 OnPropertyChanged(nameof(CanReconnect));
                 ReconnectCommand.RaiseCanExecuteChanged();
+                ReloadCommand.RaiseCanExecuteChanged();
                 SendCommand.RaiseCanExecuteChanged();
             }).ConfigureAwait(false);
         }
@@ -343,6 +357,25 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         return SessionPath is { } path
             ? OpenAsync(new SessionSummary(path, Cwd, Title, DateTimeOffset.Now, DateTimeOffset.Now))
             : StartNewAsync(Cwd);
+    }
+
+    /// <summary>RPC has no built-in reload command. Reopen the persisted session in a fresh Pi process.</summary>
+    public async Task ReloadAsync()
+    {
+        if (!CanReload) return;
+        var title = Title;
+        var path = SessionPath is { } saved && File.Exists(saved) ? saved : null;
+        if (SessionPath is not null && path is null && Messages.Any(message => message.Kind is ChatItemKind.User or ChatItemKind.Assistant))
+        {
+            ReportRecoverableError("会话文件不存在，无法安全重载。请先检查原文件。");
+            return;
+        }
+        await StartRpcAsync(new PiStartOptions(Cwd, path)).ConfigureAwait(false);
+        await RunOnUiAsync(() =>
+        {
+            Title = title;
+            if (State == ChatSessionState.Ready) StatusText = "已重载模型配置、提示词与 skills（当前会话）";
+        }).ConfigureAwait(false);
     }
 
     public async Task SelectModelAsync(ModelOptionViewModel? model)
@@ -538,6 +571,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
     private void ApplyCommands(JsonElement? response)
     {
         SlashCommands.Clear();
+        SlashCommands.Add(new ComposerSuggestion("/reload", "重载当前会话的配置、提示词与 skills", "/reload"));
         CommandLoadStatus = "当前 Pi 未提供命令；可继续输入文字";
         if (response is not { } value || !value.TryGetProperty("data", out var data) ||
             !data.TryGetProperty("commands", out var commands) || commands.ValueKind != JsonValueKind.Array) return;
@@ -670,14 +704,17 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
 
     private void OnRpcEventReceived(object? sender, PiRpcEvent rpcEvent)
     {
-        _ = HandleRpcEventAsync(rpcEvent);
+        _ = HandleRpcEventAsync(sender, rpcEvent);
     }
 
-    private async Task HandleRpcEventAsync(PiRpcEvent rpcEvent)
+    private async Task HandleRpcEventAsync(object? sender, PiRpcEvent rpcEvent)
     {
         try
         {
-            await RunOnUiAsync(() => ApplyRpcEvent(rpcEvent)).ConfigureAwait(false);
+            await RunOnUiAsync(() =>
+            {
+                if (!_disposed && ReferenceEquals(sender, _rpcClient)) ApplyRpcEvent(rpcEvent);
+            }).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is InvalidOperationException or JsonException)
         {
@@ -913,18 +950,19 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
 
     private void OnRpcExited(object? sender, int exitCode)
     {
-        if (_disposed || State == ChatSessionState.Idle)
+        if (_disposed || State == ChatSessionState.Idle || !ReferenceEquals(sender, _rpcClient))
         {
             return;
         }
 
         _ = RunOnUiAsync(() =>
         {
+            if (_disposed || !ReferenceEquals(sender, _rpcClient)) return;
             State = ChatSessionState.Faulted;
             StatusText = $"pi RPC 进程已退出，退出码：{exitCode}。";
             Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));
+            Attention?.Invoke(this, "failed");
         }).ConfigureAwait(false);
-        Attention?.Invoke(this, "failed");
     }
 
     private async Task ShowErrorAsync(string message)

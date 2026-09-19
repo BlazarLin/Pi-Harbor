@@ -103,6 +103,14 @@ foreach ($framework in $frameworks) {
     $licenseFiles | Copy-Item -Destination $licenseDir
 }
 
+$toastPackageId = 'microsoft.toolkit.uwp.notifications'
+$toastVersion = ($assets.libraries.PSObject.Properties.Name | Where-Object { $_ -like 'Microsoft.Toolkit.Uwp.Notifications/*' }) -replace '^.*/', ''
+$toastLicense = $assets.packageFolders.PSObject.Properties.Name | ForEach-Object { Join-Path $_ "$toastPackageId/$toastVersion/License.md" } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $toastLicense) { throw 'Missing notification toolkit license.' }
+$toastLicenseDir = Join-Path $publishDir "licenses/$toastPackageId"
+New-Item -ItemType Directory -Path $toastLicenseDir -Force | Out-Null
+Copy-Item -LiteralPath $toastLicense -Destination $toastLicenseDir
+
 Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $fileCount = (Get-ChildItem -LiteralPath $publishDir -File).Count
 $packageSizeMb = [Math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 1)

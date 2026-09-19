@@ -32,6 +32,11 @@ jobs:
       - name: Test and build EXE and ZIP
         shell: pwsh
         run: ./scripts/build-release.ps1 -IncludeInstaller -SkipSmokeCapture
+      - name: Verify portable app, installer upgrade and uninstall
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content src/PIHarness.App/PIHarness.App.csproj
+          ./scripts/verify-release.ps1 -AssetDirectory artifacts -VerificationDirectory artifacts/release-verification -ExpectedVersion ([string]$project.Project.PropertyGroup.Version) -ExpectedCommit $env:GITHUB_SHA
       - name: Keep downloadable build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

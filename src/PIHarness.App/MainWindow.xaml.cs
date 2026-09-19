@@ -40,7 +40,9 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        _viewModel = ReadCommandLineOption("--qa-search-capture-dir") is { } searchQa
+        _viewModel = ReadCommandLineOption("--qa-notification-report") is { } notificationReport
+            ? new MainViewModel(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(notificationReport))!, "sessions"), namesDirectory: Path.Combine(Path.GetDirectoryName(Path.GetFullPath(notificationReport))!, "names"))
+            : ReadCommandLineOption("--qa-search-capture-dir") is { } searchQa
             ? CreateSearchQaViewModel(searchQa)
             : ReadCommandLineOption("--qa-composer-capture-dir") is null
             ? new MainViewModel()
@@ -54,6 +56,11 @@ public partial class MainWindow : Window
         AttachActiveMessages();
         _viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
         _viewModel.ConversationAttention += OnConversationAttention;
+        Activated += (_, _) => { _viewModel.IsWindowActive = true; _viewModel.MarkActiveRead(); };
+        Deactivated += (_, _) => _viewModel.IsWindowActive = false;
+        try { ToastNotificationManagerCompat.OnActivated += OnToastActivated; }
+        catch (Exception error) when (error is InvalidOperationException or COMException or DllNotFoundException)
+        { _viewModel.ReportRecoverableError("Windows 通知暂不可用，完成状态仍显示在侧栏。"); }
         SourceInitialized += (_, _) => EnableDarkTitleBar();
     }
 
@@ -87,21 +94,27 @@ public partial class MainWindow : Window
     private void OnConversationAttention(ConversationViewModel conversation, string kind)
     {
         UpdateTaskbarOverlay();
-        if (!conversation.HasUnread || conversation == _viewModel.Active)
+        if (!conversation.HasUnread)
         {
             return;
         }
 
         FlashWindowForAttention();
-        if (kind == "settled")
-        {
-            ShowCompletionToast(conversation);
-        }
+        ShowCompletionToast(conversation, kind);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await _viewModel.InitializeAsync();
+        _windowReady.TrySetResult();
+        if (ReadCommandLineOption("--qa-notification-report") is { } notificationReport)
+        {
+            await VerifyNotificationAsync(notificationReport);
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Close();
+            return;
+        }
         if (ReadCommandLineOption("--qa-search-capture-dir") is { } searchQa)
         {
             var passed = await CaptureSearchQaAsync(searchQa);
@@ -198,16 +211,13 @@ public partial class MainWindow : Window
 
     private async void OnNewSessionClick(object sender, RoutedEventArgs args)
     {
-        var dialog = new OpenFolderDialog
+        try
         {
-            Title = "选择 pi 项目文件夹",
-            Multiselect = false,
-        };
-        if (dialog.ShowDialog(this) == true)
-        {
-            await _viewModel.CreateSessionAsync(dialog.FolderName);
+            await _viewModel.CreateDefaultSessionAsync();
             PromptBox.Focus();
         }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { _viewModel.ReportRecoverableError($"创建默认工作目录失败：{error.Message}"); }
     }
 
     private async void OnSessionSelected(object sender, RoutedPropertyChangedEventArgs<object> args)
@@ -223,6 +233,7 @@ public partial class MainWindow : Window
     private void OnTreeItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs args)
     {
         var item = FindVisualAncestor<TreeViewItem>(args.OriginalSource as DependencyObject);
+        if (item?.Header is SessionItemViewModel session && session.IsCurrent) _viewModel.MarkActiveRead();
         if (item?.Header is ProjectGroupViewModel)
         {
             ToggleProjectItem(item);
@@ -496,18 +507,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowCompletionToast(ConversationViewModel conversation)
+    private void ShowCompletionToast(ConversationViewModel conversation, string kind, string? tag = null)
     {
         try
         {
             new ToastContentBuilder()
-                .AddText("Pi 会话已完成")
-                .AddText(string.IsNullOrWhiteSpace(conversation.Title) ? "有一个会话任务结束，点击查看回复。" : $"『{conversation.Title}』已完成，点击查看回复。")
-                .Show();
+                .AddArgument("session", conversation.SessionPath ?? conversation.Key)
+                .AddText(kind == "failed" ? "Pi 会话运行失败" : "Pi 会话已结束")
+                .AddText($"『{conversation.Title}』有新结果，点击查看。")
+                .Show(toast => { if (tag is not null) toast.Tag = tag; });
         }
         catch (Exception exception) when (exception is InvalidOperationException or COMException or DllNotFoundException)
         {
-            // Toasts are best-effort; the taskbar badge and flashing remain available.
+            _viewModel.ReportRecoverableError("系统通知不可用；请查看侧栏未读标记，并检查 Windows 通知设置。");
         }
     }
     [StructLayout(LayoutKind.Sequential)]
@@ -528,7 +540,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs args)
     {
-        ToastNotificationManagerCompat.Uninstall();
+        ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
         base.OnClosed(args);
     }
 

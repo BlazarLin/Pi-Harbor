@@ -14,6 +14,11 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        if (args.Contains("--live-pi-reload", StringComparer.Ordinal))
+        {
+            await SessionManagementTests.VerifyInstalledPiReloadAsync();
+            return 0;
+        }
         var piSessionManager = ReadOption(args, "--live-pi-discovery");
         if (piSessionManager is not null)
         {

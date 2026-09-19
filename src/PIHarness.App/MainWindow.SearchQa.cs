@@ -87,6 +87,24 @@ public partial class MainWindow
             await _viewModel.RenameSessionAsync(session, null);
             _viewModel.SearchText = "";
             Check(_viewModel.Projects[0].Sessions.Any(item => item.Title == session.Title), "恢复默认名称");
+            await _viewModel.MarkSessionUnreadAsync(session, true);
+            Check(_viewModel.Projects.SelectMany(project => project.Sessions).Any(item => item.SessionPath == session.SessionPath && item.HasUnread), "未打开会话可人工标为未读");
+            await _viewModel.SetArchivedAsync([session], true);
+            Check(_viewModel.TotalSessionCount == 3 && _viewModel.Projects.Sum(project => project.Sessions.Count) == 2, "归档隐藏会话且保留总数");
+            _viewModel.SessionFilter = 1;
+            await SettleStyleLayoutAsync();
+            Check(_viewModel.Projects.Single().Sessions.Single().IsArchived, "归档筛选显示标识");
+            CaptureWindow(Path.Combine(directory, "archived.png"));
+            _viewModel.SearchText = "设计搜索";
+            await _viewModel.SearchNowAsync();
+            Check(_viewModel.SearchResults.Count == 1, "全局搜索仍包含归档内容");
+            _viewModel.SearchText = "";
+            await _viewModel.SetArchivedAsync([session], false);
+            _viewModel.SessionFilter = 0;
+            await SettleStyleLayoutAsync();
+            CaptureWindow(Path.Combine(directory, "management.png"));
+            var managedBytes = await File.ReadAllBytesAsync(session.SessionPath);
+            Check(bytes.SequenceEqual(managedBytes), "归档和未读均不改写 Pi 文件");
         }
         catch (Exception error) { checks.Add($"[失败] {error}"); }
         await File.WriteAllLinesAsync(Path.Combine(directory, "search-qa.txt"), checks);

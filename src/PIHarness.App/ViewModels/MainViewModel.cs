@@ -28,7 +28,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.5.0";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.6.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
@@ -53,13 +53,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             ? Path.Combine(appDataDirectory, "session-flags")
             : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(namesDirectory))!, "session-flags"));
         _starredSessions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _managementStore = new SessionManagementStore(namesDirectory is null ? appDataDirectory : Path.GetDirectoryName(Path.GetFullPath(namesDirectory))!);
         _catalog = new SessionCatalog(_sessionRoot, _nameStore);
         _catalog.Changed += OnCatalogChanged;
         _uiContext = SynchronizationContext.Current;
 
         RefreshCommand = new AsyncRelayCommand(RefreshCatalogAsync, () => true);
         Active = CreateConversation("initial", "选择一个会话");
-        _ = LoadStarredSessionsAsync();
+        _managementLoaded = Task.WhenAll(LoadManagementAsync(), LoadStarredSessionsAsync());
     }
 
     public ConversationViewModel Active { get; private set; }
@@ -73,6 +74,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand SendCommand => Active.SendCommand;
     public AsyncRelayCommand StopCommand => Active.StopCommand;
     public AsyncRelayCommand ReconnectCommand => Active.ReconnectCommand;
+    public AsyncRelayCommand ReloadCommand => Active.ReloadCommand;
     public string AppVersionText => $"v{ApplicationVersion}";
     public string WindowTitle => $"{ProductName} {ApplicationVersion} — {ProductSubtitle}";
 
@@ -106,13 +108,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsLoadingHistory => Active.IsLoadingHistory;
 
     /// <summary>Number of open conversations that finished (or failed) without being viewed.</summary>
-    public int UnreadCount => _conversations.Values.Count(conversation => conversation.HasUnread);
+    public int UnreadCount => _unread.Count;
     public int BusyCount => _conversations.Values.Count(conversation => conversation.IsBusy);
     public string BackgroundActivityText
     {
         get
         {
             var parts = new List<string>();
+            if (BusyCount > 0) parts.Add($"{BusyCount} 个处理中");
             var unread = UnreadCount;
             if (unread > 0) parts.Add($"{unread} 条未读");
             return parts.Count == 0 ? string.Empty : string.Join(" · ", parts);
@@ -122,6 +125,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task InitializeAsync()
     {
         ThrowIfDisposed();
+        await _managementLoaded;
         await RefreshCatalogAsync().ConfigureAwait(false);
         _catalog.StartWatching();
     }
@@ -158,6 +162,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task CreateSessionAsync(string cwd)
     {
         ThrowIfDisposed();
+        await _managementLoaded;
         if (!Directory.Exists(cwd))
         {
             Active.ReportRecoverableError($"项目路径不存在：{cwd}");
@@ -182,6 +187,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(session);
         ThrowIfDisposed();
+        await _managementLoaded;
         if (!Directory.Exists(session.Cwd))
         {
             Active.ReportRecoverableError($"项目路径不存在：{session.Cwd}");
@@ -196,17 +202,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         var conversation = CreateConversation(key, session.Title);
+        conversation.HasUnread = _unread.Contains(key);
         _conversations[key] = conversation;
         Activate(conversation);
         await conversation.OpenAsync(session).ConfigureAwait(false);
-        UpdateTreeState();
+        await RunOnUiAsync(() => { MarkActiveRead(); UpdateTreeState(); }).ConfigureAwait(false);
     }
 
     private void Activate(ConversationViewModel conversation)
     {
         if (ReferenceEquals(Active, conversation))
         {
-            conversation.HasUnread = false;
+            MarkActiveRead();
             return;
         }
 
@@ -224,7 +231,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
-        conversation.HasUnread = false;
+        MarkActiveRead();
         foreach (var name in ForwardedPropertyNames)
         {
             OnPropertyChanged(name);
@@ -242,7 +249,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         nameof(StatusText), nameof(CanEditComposer), nameof(SelectedSessionPath), nameof(State), nameof(CanSend), nameof(CanSwitchSession),
         nameof(CanChangeModel), nameof(IsStreaming), nameof(CanReconnect), nameof(EmptyConversationText),
         nameof(MessageCountText), nameof(TotalTokensText), nameof(IsLoadingHistory),
-        nameof(SendCommand), nameof(StopCommand), nameof(ReconnectCommand),
+        nameof(SendCommand), nameof(StopCommand), nameof(ReconnectCommand), nameof(ReloadCommand),
     ];
 
     private ConversationViewModel CreateConversation(string key, string title = "选择一个会话")
@@ -289,9 +296,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnConversationAttention(ConversationViewModel conversation, string kind)
     {
-        if (!ReferenceEquals(conversation, Active))
+        if (_shuttingDown) return;
+        if (!ReferenceEquals(conversation, Active) || !IsWindowActive)
         {
             conversation.HasUnread = true;
+            if (conversation.SessionPath is { } path) SetUnread(path, true);
             OnPropertyChanged(nameof(UnreadCount));
             OnPropertyChanged(nameof(BackgroundActivityText));
         }
@@ -338,6 +347,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void RefreshRelativeActivityTimes(DateTimeOffset now)
     {
         foreach (var session in Projects.SelectMany(project => project.Sessions)) session.UpdateRelativeActivity(now);
+        OnPropertyChanged(nameof(SessionStatistics));
+        OnPropertyChanged(nameof(ActiveSessionCount));
     }
 
     internal void PrepareDocumentationDemo()
@@ -364,6 +375,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _shuttingDown = true;
+        await _managementLoaded.ConfigureAwait(false);
+        await _managementSaved.ConfigureAwait(false);
         _searchCts?.Cancel();
         await _searchTask.ConfigureAwait(false);
         _catalog.Changed -= OnCatalogChanged;
@@ -412,23 +425,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ReplaceProjects(CatalogSnapshot snapshot)
     {
         if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle) Active.ReportRecoverableError(snapshot.Warnings[0]);
-        var previous = Projects.SelectMany(project => project.Sessions).Select(item => item.Session);
+        var previous = AllSessions;
         var incoming = snapshot.Projects.SelectMany(project => project.Sessions);
         if (previous.SequenceEqual(incoming)) return;
-        var expansion = Projects.ToDictionary(project => project.Cwd, project => project.IsExpanded, StringComparer.OrdinalIgnoreCase);
-        var latestPath = snapshot.Projects.SelectMany(project => project.Sessions).FirstOrDefault()?.SessionPath;
-        Projects.Clear();
-        foreach (var project in snapshot.Projects)
-        {
-            var item = new ProjectGroupViewModel(project)
-            {
-                IsExpanded = expansion.GetValueOrDefault(project.Cwd, true),
-            };
-            foreach (var session in item.Sessions) session.IsLatest = AreSameSessionPath(session.SessionPath, latestPath);
-            Projects.Add(item);
-        }
-        UpdateTreeState();
-        ScheduleSearch(catalogChanged: true);
+        _snapshot = snapshot;
+        RebuildProjects();
 
         if (snapshot.Warnings.Count > 0 && State == ChatSessionState.Idle)
         {
@@ -446,7 +447,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _conversations.TryGetValue(sessionPath, out var conversation);
             session.IsOpen = conversation is not null;
             session.IsBusy = conversation is { IsBusy: true };
-            session.HasUnread = conversation is { HasUnread: true };
+            session.HasUnread = _unread.Contains(sessionPath);
+            session.IsArchived = _archived.Contains(sessionPath);
             session.IsStarred = _starredSessions.Contains(sessionPath);
             if (conversation is { Title.Length: > 0 } live && live.Title != "新对话" &&
                 !_customRenames.Contains(sessionPath) && live.Title != session.Title)
@@ -547,6 +549,7 @@ public sealed class SessionItemViewModel(SessionSummary session) : ObservableObj
     private bool _hasUnread;
     private bool _isStarred;
     private bool _isLatest;
+    private bool _isArchived;
     private string _relativeActivityText = RelativeActivityTime.Format(session.LastActivityAt, DateTimeOffset.Now);
 
     public SessionSummary Session
@@ -584,6 +587,9 @@ public sealed class SessionItemViewModel(SessionSummary session) : ObservableObj
     public string Title => Session.Title;
     public string Cwd => Session.Cwd;
     public DateTimeOffset LastActivityAt => Session.LastActivityAt;
+
+    public bool IsArchived { get => _isArchived; set { if (SetProperty(ref _isArchived, value)) OnPropertyChanged(nameof(ArchiveMenuHeader)); } }
+    public string ArchiveMenuHeader => IsArchived ? "恢复会话" : "归档会话";
 
     public string StarMenuHeader => IsStarred ? "★ 取消重点关注" : "☆ 标为重点关注";
 }

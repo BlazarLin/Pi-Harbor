@@ -44,7 +44,7 @@ public sealed partial class MainViewModel
         IsSearching = true;
         SearchStatus = "正在搜索全部会话…";
         var cts = _searchCts = new CancellationTokenSource();
-        var sessions = Projects.SelectMany(project => project.Sessions).Select(item => item.Session).ToArray();
+        var sessions = AllSessions.ToArray();
         var query = SearchText.Trim();
         _searchTask = RunSearchAsync(sessions, query, generation, delay, cts);
     }

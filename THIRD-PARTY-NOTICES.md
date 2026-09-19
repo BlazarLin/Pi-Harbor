@@ -9,6 +9,10 @@ Self-contained Windows downloads include Microsoft .NET and Windows Desktop Runt
 - [.NET runtime license and notices](https://github.com/dotnet/runtime)
 - [WPF license and notices](https://github.com/dotnet/wpf)
 
+## Notification library
+
+Windows toast notifications use [Microsoft.Toolkit.Uwp.Notifications 7.1.3](https://github.com/CommunityToolkit/WindowsCommunityToolkit), licensed under MIT. Its license is included in `licenses/microsoft.toolkit.uwp.notifications/License.md` in release downloads.
+
 ## External dependency
 
 [Pi](https://github.com/earendil-works/pi) is an independent coding-agent project, installed and configured by the user. Pi Harbor starts Pi using its RPC interface. Pi, Node.js, model credentials and provider SDKs are not bundled with Pi Harbor.

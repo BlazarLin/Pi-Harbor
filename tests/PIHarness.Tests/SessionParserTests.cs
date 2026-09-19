@@ -44,7 +44,7 @@ internal static class SessionParserTests
         AssertEx.Equal("分析 图像 异常", result.Session!.Title, "标题应压缩连续空白");
     }
 
-    [TestCase("TEST-03C", "注入的扩展上下文不作为会话标题")]
+    [TestCase("TEST-03D", "注入的扩展上下文不作为会话标题")]
     public static async Task InjectedExtensionContextIsNotATitleAsync()
     {
         using var directory = new TemporaryDirectory();

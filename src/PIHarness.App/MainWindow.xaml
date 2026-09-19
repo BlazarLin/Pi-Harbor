@@ -208,6 +208,10 @@
                     <ContextMenu>
                         <MenuItem Header="重命名…" InputGestureText="F2" Tag="{Binding Session}" Click="OnRenameSessionClick" />
                         <MenuItem Header="{Binding StarMenuHeader}" Tag="{Binding Session}" Click="OnToggleStarClick" />
+                        <Separator />
+                        <MenuItem Header="标为未读" Tag="{Binding Session}" Click="OnMarkUnreadClick" />
+                        <MenuItem Header="标为已读" Tag="{Binding Session}" Click="OnMarkReadClick" />
+                        <MenuItem Header="{Binding ArchiveMenuHeader}" Tag="{Binding Session}" Click="OnArchiveSessionClick" />
                     </ContextMenu>
                 </StackPanel.ContextMenu>
                 <Grid>
@@ -223,6 +227,8 @@
                 <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                     <TextBlock Text="● 未读 " Foreground="{StaticResource UnreadBrush}" FontSize="11" FontWeight="SemiBold"
                                Visibility="{Binding HasUnread, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Text="归档 · " Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"
+                               Visibility="{Binding IsArchived, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock Text="◌ 处理中 " Foreground="{StaticResource AccentBrush}" FontSize="11"
                                Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock Text="最新 · " Foreground="{StaticResource AccentBrush}" FontSize="11"
@@ -235,7 +241,11 @@
         <DataTemplate DataType="{x:Type vm:SessionSearchItemViewModel}">
             <StackPanel Margin="5,6" ToolTip="{Binding ToolTip}">
                 <StackPanel.ContextMenu>
-                    <ContextMenu><MenuItem Header="重命名…" InputGestureText="F2" Tag="{Binding Session}" Click="OnRenameSessionClick" /></ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="重命名…" InputGestureText="F2" Tag="{Binding Session}" Click="OnRenameSessionClick" />
+                        <MenuItem Header="标为未读" Tag="{Binding Session}" Click="OnMarkUnreadClick" />
+                        <MenuItem Header="标为已读" Tag="{Binding Session}" Click="OnMarkReadClick" />
+                    </ContextMenu>
                 </StackPanel.ContextMenu>
                 <TextBlock Text="{Binding Title}" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding Details}" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="0,4,0,4" TextTrimming="CharacterEllipsis" />
@@ -326,18 +336,42 @@
                         <TextBlock Text="Pi Session Desk" FontSize="11" Margin="0,2,0,0"
                                    Foreground="{StaticResource MutedTextBrush}" />
                     </StackPanel>
-                    <Button Style="{StaticResource FlatButtonStyle}" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}">
+                    <Button Style="{StaticResource FlatButtonStyle}" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}" ToolTip="{Binding DefaultWorkingDirectory}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="＋" FontSize="18" Width="27" />
                             <TextBlock Text="新对话" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="选择目录新建…" Style="{StaticResource FlatButtonStyle}" Click="OnChooseSessionFolderClick" FontSize="11" />
+                        <Button Content="默认目录…" Style="{StaticResource FlatButtonStyle}" Click="OnSetDefaultFolderClick" FontSize="11" ToolTip="{Binding DefaultWorkingDirectory}" />
+                    </StackPanel>
                     <Button Style="{StaticResource FlatButtonStyle}" Command="{Binding RefreshCommand}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="↻" FontSize="17" Width="27" />
                             <TextBlock Text="刷新会话" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+                    <TextBlock Text="{Binding SessionStatistics}" FontSize="11" Margin="6,8,4,6" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="7 天内活跃和总计均包含归档会话；按最后活动时间统计" />
+                    <DockPanel Margin="4,0,4,2">
+                        <Button DockPanel.Dock="Right" Content="整理旧会话" Style="{StaticResource FlatButtonStyle}" Click="OnArchiveOlderClick" FontSize="11" ToolTip="批量归档超过 7 天未活动的会话" />
+                        <ListBox SelectedIndex="{Binding SessionFilter}" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" AutomationProperties.Name="会话范围">
+                            <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
+                                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="FilterBorder" CornerRadius="5" Padding="6,6" Background="Transparent"><ContentPresenter /></Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="FilterBorder" Property="Background" Value="{StaticResource HoverBrush}" /></Trigger>
+                                        <Trigger Property="IsSelected" Value="True"><Setter TargetName="FilterBorder" Property="Background" Value="{StaticResource CurrentSessionBrush}" /><Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" /></Trigger>
+                                        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="FilterBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" /><Setter TargetName="FilterBorder" Property="BorderThickness" Value="1" /></Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate></Setter.Value></Setter>
+                            </Style></ListBox.ItemContainerStyle>
+                            <ListBoxItem Content="未归档" />
+                            <ListBoxItem Content="已归档" />
+                            <ListBoxItem Content="全部" />
+                        </ListBox>
+                    </DockPanel>
                     <Grid Margin="4,10,4,5">
                         <TextBox x:Name="GlobalSearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                  MaxLength="256" Padding="9,8,28,8" Background="{StaticResource PanelBrush}"
@@ -397,8 +431,8 @@
                         <TextBlock Text="{Binding BackgroundActivityText}" Foreground="{StaticResource UnreadBrush}"
                                    FontSize="11" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
                             <TextBlock.Style><Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers><DataTrigger Binding="{Binding BackgroundActivityText}" Value=""><Setter Property="Visibility" Value="Hidden" /></DataTrigger></Style.Triggers>
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers><DataTrigger Binding="{Binding BackgroundActivityText}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers>
                             </Style></TextBlock.Style>
                         </TextBlock>
                         <TextBlock Text="{Binding ModelText}" Foreground="{StaticResource MutedTextBrush}"
@@ -460,6 +494,7 @@
                                    FontSize="12" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentCwd}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Button Content="重载" Command="{Binding ReloadCommand}" Style="{StaticResource FlatButtonStyle}" Margin="0,0,8,0" ToolTip="重载当前会话的模型配置、提示词和 skills；处理中不可用。也可输入 /reload。" />
                         <TextBlock Text="{Binding TotalTokensText}" Foreground="{StaticResource SecondaryTextBrush}"
                                    VerticalAlignment="Center" Margin="0,0,14,0" FontSize="12"
                                    ToolTip="本会话累计消耗 Token（含本地历史与本次运行内完成的轮次）" />
