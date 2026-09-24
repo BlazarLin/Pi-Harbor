@@ -31,7 +31,7 @@ public partial class MainWindow
             File.WriteAllLines(Path.Combine(root, id + ".jsonl"), [
                 JsonSerializer.Serialize(new { type = "session", version = 3, id, cwd, timestamp }),
                 JsonSerializer.Serialize(new { type = "message", id = "u", timestamp, message = new { role = "user", content = title } }),
-                JsonSerializer.Serialize(new { type = "message", id = "a", parentId = "u", timestamp, message = new { role = "assistant", content = text } }),
+                JsonSerializer.Serialize(new { type = "message", id = "a", parentId = "u", timestamp, message = new { role = "assistant", content = text, usage = new { totalTokens = (i + 1) * 1200 } } }),
             ]);
         }
         return new MainViewModel(root, rpcClientFactory: () => throw new InvalidOperationException("搜索验收不得启动 Pi"), namesDirectory: Path.Combine(directory, "names"));
@@ -105,6 +105,7 @@ public partial class MainWindow
             CaptureWindow(Path.Combine(directory, "management.png"));
             var managedBytes = await File.ReadAllBytesAsync(session.SessionPath);
             Check(bytes.SequenceEqual(managedBytes), "归档和未读均不改写 Pi 文件");
+            await CaptureProductQaAsync(directory, Check);
         }
         catch (Exception error) { checks.Add($"[失败] {error}"); }
         await File.WriteAllLinesAsync(Path.Combine(directory, "search-qa.txt"), checks);

@@ -12,6 +12,7 @@ public enum ChatItemKind
     Metrics,
     System,
     Error,
+    ActivityGroup,
 }
 
 public sealed record SessionHistoryItem(

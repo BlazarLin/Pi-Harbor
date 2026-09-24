@@ -12,7 +12,7 @@ using FlowList = System.Windows.Documents.List;
 
 namespace PIHarness.App.Presentation;
 
-public sealed class MarkdownTextBlock : Grid
+public sealed partial class MarkdownTextBlock : Grid
 {
     public static readonly DependencyProperty ForegroundProperty = TextElement.ForegroundProperty.AddOwner(
         typeof(MarkdownTextBlock),
@@ -209,6 +209,7 @@ public sealed class MarkdownTextBlock : Grid
     {
         ApplyPresentationProperties();
         Document.Blocks.Clear();
+        _renderedImageCount = 0;
         var lines = (Markdown ?? string.Empty).ReplaceLineEndings("\n").Split('\n');
 
         for (var nIndex = 0; nIndex < lines.Length;)
@@ -219,6 +220,7 @@ public sealed class MarkdownTextBlock : Grid
                 continue;
             }
 
+            if (TryAddImageLine(lines[nIndex])) { nIndex++; continue; }
             if (TryAddTable(lines, nIndex, out var nTableLineCount))
             {
                 nIndex += nTableLineCount;

@@ -47,7 +47,7 @@ public partial class MainWindow
             Check("方向键选择补全项", downKey.Handled && CompletionList.SelectedIndex == 1);
             var tabKey = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(this), Environment.TickCount, Key.Tab) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
             PromptBox.RaiseEvent(tabKey);
-            Check("文件引用替换触发词且保留前文", PromptBox.Text.StartsWith("请查看 \"") && !PromptBox.Text.Contains('@'));
+            Check("文件引用替换为短占位符且发送时还原路径", PromptBox.Text.StartsWith("请查看 〔文件") && _viewModel.Active.ExpandFileReferences(PromptBox.Text).StartsWith("请查看 \""));
 
             PromptBox.Text = "/";
             PromptBox.CaretIndex = 1;

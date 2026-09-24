@@ -25,6 +25,7 @@ public sealed class ChatMessageTemplateSelector : DataTemplateSelector
             ChatItemKind.Tool => "ToolMessageTemplate",
             ChatItemKind.Metrics => "MetricsMessageTemplate",
             ChatItemKind.Error => "ErrorMessageTemplate",
+            ChatItemKind.ActivityGroup => "ActivityGroupTemplate",
             _ => "SystemMessageTemplate",
         };
         return container is FrameworkElement element

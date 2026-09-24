@@ -172,6 +172,7 @@ internal static class Program
             if (!string.IsNullOrWhiteSpace(commandLog))
             {
                 await File.AppendAllTextAsync(commandLog, command + Environment.NewLine).ConfigureAwait(false);
+                if (command == "prompt") await File.AppendAllTextAsync(commandLog + ".prompts", JsonSerializer.Serialize(root.GetProperty("message").GetString()) + Environment.NewLine).ConfigureAwait(false);
             }
 
             if (command == "get_state" &&

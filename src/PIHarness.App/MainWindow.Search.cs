@@ -57,14 +57,16 @@ public partial class MainWindow
         _pendingSearchQuery = "";
         if (query.Length == 0 || _viewModel.Messages.Count == 0) return;
         var match = _viewModel.Messages.FirstOrDefault(item =>
-            (item.Kind is ChatItemKind.User or ChatItemKind.Assistant or ChatItemKind.System or ChatItemKind.Error) &&
+            (item.Kind is ChatItemKind.User or ChatItemKind.Assistant or ChatItemKind.System or ChatItemKind.Error or ChatItemKind.Thinking or ChatItemKind.Tool) &&
             item.Text.Contains(query, StringComparison.OrdinalIgnoreCase));
         if (match is null) return;
         // Keep reading intent so auto-follow does not pull the view back to the bottom.
         _scrollCoordinator.OnUserWheel(120);
         CancelPendingAutoScroll();
         UpdateReturnToLatestVisibility();
-        MessageList.ScrollIntoView(match);
+        var group = _viewModel.DisplayMessages.FirstOrDefault(item => item.Kind == ChatItemKind.ActivityGroup && item.Children.Contains(match));
+        if (group is not null) { group.IsExpanded = true; match.IsExpanded = true; }
+        MessageList.ScrollIntoView(group ?? match);
         match.IsHighlighted = true;
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () => MessageList.UpdateLayout());
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };

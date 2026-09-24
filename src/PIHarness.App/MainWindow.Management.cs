@@ -10,6 +10,17 @@ namespace PIHarness.App;
 public partial class MainWindow
 {
     private readonly TaskCompletionSource _windowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private async void OnOverviewClick(object sender, RoutedEventArgs args)
+    {
+        _viewModel.IsOverviewVisible = true;
+        await _viewModel.RefreshOverviewAsync();
+    }
+
+    private async void OnRecentSessionClick(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { Tag: SessionSummary session })
+        { await _viewModel.OpenSessionAsync(session); PromptBox.Focus(); }
+    }
 
     private async Task VerifyNotificationAsync(string reportPath)
     {
@@ -21,10 +32,12 @@ public partial class MainWindow
             ShowCompletionToast(_viewModel.Active, "settled", tag);
             await Task.Delay(1000);
             var setting = ToastNotificationManagerCompat.CreateToastNotifier().Setting;
-            var delivered = ToastNotificationManagerCompat.History.GetHistory().Any(toast => toast.Tag == tag);
-            await File.WriteAllTextAsync(reportPath, $"Windows notification setting: {setting}\nNotification present in Windows history: {delivered}\n");
+            var notification = ToastNotificationManagerCompat.History.GetHistory().FirstOrDefault(toast => toast.Tag == tag);
+            var delivered = notification is not null;
+            var named = notification?.Content.InnerText.Contains(_viewModel.CurrentTitle, StringComparison.Ordinal) == true;
+            await File.WriteAllTextAsync(reportPath, $"Windows notification setting: {setting}\nNotification present in Windows history: {delivered}\nNotification contains conversation title: {named}\n");
             ToastNotificationManagerCompat.History.Remove(tag);
-            Environment.ExitCode = delivered ? 0 : 1;
+            Environment.ExitCode = delivered && named ? 0 : 1;
         }
         catch (Exception error)
         {
@@ -52,6 +65,16 @@ public partial class MainWindow
     {
         var dialog = new OpenFolderDialog { Title = "选择本次对话的工作目录", Multiselect = false };
         if (dialog.ShowDialog(this) == true) await _viewModel.CreateSessionAsync(dialog.FolderName);
+    }
+
+    private async void OnNewProjectSessionClick(object sender, RoutedEventArgs args)
+    {
+        if (sender is FrameworkElement { Tag: string cwd })
+        {
+            args.Handled = true;
+            await _viewModel.CreateSessionAsync(cwd);
+            PromptBox.Focus();
+        }
     }
 
     private async void OnSetDefaultFolderClick(object sender, RoutedEventArgs args)

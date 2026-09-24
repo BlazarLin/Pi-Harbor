@@ -27,8 +27,8 @@ internal static class ComposerTests
         var matches = ComposerCompletion.FindFiles(directory.Path, ".cs", CancellationToken.None);
         AssertEx.Equal(1, matches.Count, "忽略依赖目录");
         AssertEx.Equal("\"中文 file.cs\" ", matches[0].InsertText, "空格文件名引用必须完整");
-        for (var index = 0; index < 60; index++) File.WriteAllText(Path.Combine(directory.Path, $"file{index}.txt"), "");
-        AssertEx.Equal(40, ComposerCompletion.FindFiles(directory.Path, "", CancellationToken.None).Count, "结果应有上限");
+        for (var index = 0; index < 150; index++) File.WriteAllText(Path.Combine(directory.Path, $"file{index}.txt"), "");
+        AssertEx.Equal(ComposerCompletion.MaxFileResults, ComposerCompletion.FindFiles(directory.Path, "", CancellationToken.None).Count, "结果应有上限");
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         await AssertEx.ThrowsAsync<OperationCanceledException>(() => Task.Run(() => ComposerCompletion.FindFiles(directory.Path, "", cts.Token)), "过期查询应取消");

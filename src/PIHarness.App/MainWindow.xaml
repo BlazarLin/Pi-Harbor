@@ -98,7 +98,7 @@
                         <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                     </Style></Border.Style>
                     <StackPanel>
-                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                    <p:MarkdownTextBlock BaseDirectory="{Binding DataContext.CurrentCwd, RelativeSource={RelativeSource AncestorType=Window}}" Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource PrimaryTextBrush}"
                                          FontSize="14" />
                     <ItemsControl ItemsSource="{Binding Images}">
@@ -123,7 +123,7 @@
                     <Border.Style><Style TargetType="Border">
                         <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                     </Style></Border.Style>
-                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                    <p:MarkdownTextBlock BaseDirectory="{Binding DataContext.CurrentCwd, RelativeSource={RelativeSource AncestorType=Window}}" Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource PrimaryTextBrush}"
                                          FontSize="14" />
                 </Border>
@@ -135,10 +135,16 @@
                       Header="思考过程" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,0"
                         Margin="0,6,0,0" Padding="10,4">
-                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                    <p:MarkdownTextBlock BaseDirectory="{Binding DataContext.CurrentCwd, RelativeSource={RelativeSource AncestorType=Window}}" Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource SecondaryTextBrush}"
                                          FontSize="13" />
                 </Border>
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ActivityGroupTemplate">
+            <Expander Header="{Binding Title}" IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="18,6,35,6" Foreground="{StaticResource SecondaryTextBrush}">
+                <ItemsControl ItemsSource="{Binding Children}" ItemTemplateSelector="{StaticResource MessageTemplateSelector}" />
             </Expander>
         </DataTemplate>
 
@@ -148,7 +154,7 @@
                 <Border Background="{StaticResource PanelBrush}" CornerRadius="6"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                         Margin="0,6,0,0" Padding="10,7">
-                    <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                    <p:MarkdownTextBlock BaseDirectory="{Binding DataContext.CurrentCwd, RelativeSource={RelativeSource AncestorType=Window}}" Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                          Foreground="{StaticResource SecondaryTextBrush}"
                                          FontFamily="Cascadia Mono, Consolas" FontSize="12" />
                 </Border>
@@ -161,7 +167,7 @@
                 <Border.Style><Style TargetType="Border">
                     <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" /><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                 </Style></Border.Style>
-                <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                <p:MarkdownTextBlock BaseDirectory="{Binding DataContext.CurrentCwd, RelativeSource={RelativeSource AncestorType=Window}}" Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
                                      Foreground="{StaticResource SecondaryTextBrush}"
                                      FontSize="13" />
             </Border>
@@ -188,6 +194,7 @@
             <Grid ToolTip="{Binding Cwd}" Margin="0,5,0,3">
                 <Grid.ContextMenu>
                     <ContextMenu>
+                        <MenuItem Header="在此文件夹新建对话" Tag="{Binding Cwd}" Click="OnNewProjectSessionClick" />
                         <MenuItem Header="在文件资源管理器中打开" Tag="{Binding Cwd}"
                                   Click="OnOpenProjectFolderClick" />
                     </ContextMenu>
@@ -195,10 +202,12 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="22" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="▱" FontSize="17" Foreground="{StaticResource SecondaryTextBrush}" />
                 <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" Foreground="{StaticResource PrimaryTextBrush}" />
+                <Button Grid.Column="2" Content="＋" Tag="{Binding Cwd}" Click="OnNewProjectSessionClick" ToolTip="在此文件夹新建对话" AutomationProperties.Name="在此文件夹新建对话" Style="{StaticResource FlatButtonStyle}" Padding="5,0" Margin="4,0,0,0" />
             </Grid>
         </HierarchicalDataTemplate>
 
@@ -336,16 +345,20 @@
                         <TextBlock Text="Pi Session Desk" FontSize="11" Margin="0,2,0,0"
                                    Foreground="{StaticResource MutedTextBrush}" />
                     </StackPanel>
-                    <Button Style="{StaticResource FlatButtonStyle}" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}" ToolTip="{Binding DefaultWorkingDirectory}">
+                    <Button Content="◫  Overview" Style="{StaticResource FlatButtonStyle}" Click="OnOverviewClick" ToolTip="本机会话用量与最近工作" />
+                    <Button x:Name="NewSessionButton" Style="{StaticResource FlatButtonStyle}" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}" ToolTip="{Binding DefaultWorkingDirectory}">
+                        <Button.ContextMenu><ContextMenu>
+                            <MenuItem Header="使用默认目录新建" Click="OnNewDefaultSessionClick" ToolTip="{Binding DefaultWorkingDirectory}" />
+                            <MenuItem Header="选择目录新建…" Click="OnChooseSessionFolderClick" />
+                            <Separator />
+                            <MenuItem Header="设置默认目录…" Click="OnSetDefaultFolderClick" />
+                        </ContextMenu></Button.ContextMenu>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="＋" FontSize="18" Width="27" />
                             <TextBlock Text="新对话" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="选择目录新建…" Style="{StaticResource FlatButtonStyle}" Click="OnChooseSessionFolderClick" FontSize="11" />
-                        <Button Content="默认目录…" Style="{StaticResource FlatButtonStyle}" Click="OnSetDefaultFolderClick" FontSize="11" ToolTip="{Binding DefaultWorkingDirectory}" />
-                    </StackPanel>
+
                     <Button Style="{StaticResource FlatButtonStyle}" Command="{Binding RefreshCommand}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="↻" FontSize="17" Width="27" />
@@ -560,7 +573,7 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-                <ListBox x:Name="MessageList" ItemsSource="{Binding Messages}"
+                <ListBox x:Name="MessageList" ItemsSource="{Binding DisplayMessages}"
                          ItemTemplateSelector="{StaticResource MessageTemplateSelector}"
                          Background="Transparent" BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -618,7 +631,7 @@
                             BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,5">
                         <StackPanel>
                             <TextBlock x:Name="CompletionHint" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="4,2,4,5" />
-                            <ListBox x:Name="CompletionList" MaxHeight="160" Background="Transparent" BorderThickness="0"
+                            <ListBox x:Name="CompletionList" MaxHeight="300" Background="Transparent" BorderThickness="0"
                                      Foreground="{StaticResource PrimaryTextBrush}" Focusable="False"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" PreviewMouseLeftButtonUp="OnCompletionClick">
                                 <ListBox.ItemContainerStyle>
@@ -643,6 +656,18 @@
                             </ListBox>
                         </StackPanel>
                     </Border>
+                    <ItemsControl ItemsSource="{Binding FileReferences}" IsEnabled="{Binding CanEditComposer}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate><DataTemplate>
+                            <Border Background="{StaticResource CurrentSessionBrush}" CornerRadius="7" Margin="0,0,6,6" Padding="7,3" ToolTip="{Binding OriginalText}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Token}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <Button Content="×" Tag="{Binding}" Click="OnRemoveFileReferenceClick" Style="{StaticResource FlatButtonStyle}" Padding="6,0" ToolTip="移除文件引用" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <ItemsControl ItemsSource="{Binding Attachments}" IsEnabled="{Binding CanEditComposer}">
                         <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
                             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><ItemsPresenter /></ScrollViewer>
@@ -709,6 +734,29 @@
                 </DockPanel>
                 </StackPanel>
             </Border>
+            <ScrollViewer x:Name="OverviewPanel" Grid.RowSpan="3" Background="{StaticResource WindowBrush}" VerticalScrollBarVisibility="Auto" Visibility="{Binding IsOverviewVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel Margin="28,24" MaxWidth="1050" HorizontalAlignment="Stretch">
+                    <DockPanel><Button Content="刷新用量" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" Click="OnOverviewClick" HorizontalAlignment="Right" /><TextBlock Text="Overview" FontSize="26" FontWeight="SemiBold" /></DockPanel>
+                    <TextBlock Text="{Binding OverviewStatus}" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,20" />
+                    <UniformGrid Columns="3" Margin="-5,0,-5,20">
+                        <Border Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="18" Margin="5"><StackPanel><TextBlock Text="今日 Tokens" Foreground="{StaticResource SecondaryTextBrush}" /><TextBlock Text="{Binding TodayTokens}" FontSize="25" Margin="0,8,0,0" /></StackPanel></Border>
+                        <Border Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="18" Margin="5"><StackPanel><TextBlock Text="最近 28 天 Tokens" Foreground="{StaticResource SecondaryTextBrush}" /><TextBlock Text="{Binding MonthTokens}" FontSize="25" Margin="0,8,0,0" /></StackPanel></Border>
+                        <Border Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="18" Margin="5"><StackPanel><TextBlock Text="活跃天数" Foreground="{StaticResource SecondaryTextBrush}" /><TextBlock Text="{Binding ActiveDays}" FontSize="25" Margin="0,8,0,0" /></StackPanel></Border>
+                    </UniformGrid>
+                    <TextBlock Text="每日用量" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <ItemsControl ItemsSource="{Binding UsageDays}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate><DataTemplate><Border Background="{Binding Background}" CornerRadius="7" Margin="3" Padding="9,8" ToolTip="{Binding Detail}"><StackPanel><TextBlock Text="{Binding DateText}" FontSize="11" /><TextBlock Text="{Binding TokensText}" FontWeight="SemiBold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" /></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="基于本地保存的用量记录，包含缓存；不是服务商账单。归档不会移除统计，外部删除会在刷新后移除。" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource MutedTextBrush}" Margin="3,8,0,20" />
+                    <TextBlock Text="最近会话" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <ItemsControl ItemsSource="{Binding RecentSessions}"><ItemsControl.ItemTemplate><DataTemplate>
+                        <Button Tag="{Binding}" Click="OnRecentSessionClick" Style="{StaticResource FlatButtonStyle}" HorizontalContentAlignment="Stretch" Margin="0,2" Padding="10,9">
+                            <StackPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Cwd}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" /></StackPanel>
+                        </Button>
+                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </Window>

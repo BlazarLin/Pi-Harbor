@@ -118,8 +118,6 @@ public partial class MainWindow : Window
         if (ReadCommandLineOption("--qa-search-capture-dir") is { } searchQa)
         {
             var passed = await CaptureSearchQaAsync(searchQa);
-            await _viewModel.ShutdownAsync();
-            _shutdownComplete = true;
             Environment.ExitCode = passed ? 0 : 1;
             Close();
             return;
@@ -209,7 +207,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnNewSessionClick(object sender, RoutedEventArgs args)
+    private void OnNewSessionClick(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { ContextMenu: { } menu } button)
+        { menu.PlacementTarget = button; menu.Placement = PlacementMode.Bottom; menu.IsOpen = true; }
+    }
+
+    private async void OnNewDefaultSessionClick(object sender, RoutedEventArgs args)
     {
         try
         {
@@ -232,8 +236,13 @@ public partial class MainWindow : Window
 
     private void OnTreeItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs args)
     {
+        if (FindVisualAncestor<Button>(args.OriginalSource as DependencyObject) is not null) return;
         var item = FindVisualAncestor<TreeViewItem>(args.OriginalSource as DependencyObject);
-        if (item?.Header is SessionItemViewModel session && session.IsCurrent) _viewModel.MarkActiveRead();
+        if (item?.Header is SessionItemViewModel session && session.IsCurrent)
+        {
+            _viewModel.IsOverviewVisible = false;
+            _viewModel.MarkActiveRead();
+        }
         if (item?.Header is ProjectGroupViewModel)
         {
             ToggleProjectItem(item);
@@ -294,10 +303,12 @@ public partial class MainWindow : Window
         _shutdownStarted = true;
         _activityTimer.Stop();
         _completionCts?.Cancel();
-        IsEnabled = false;
-        await _viewModel.ShutdownAsync();
-        _shutdownComplete = true;
-        Close();
+        // Hide the intact dark surface before tearing down the renderer / RPC processes.
+        Hide();
+        if (ReadCommandLineOption("--qa-search-capture-dir") is { } closeQa)
+            await File.WriteAllTextAsync(Path.Combine(closeQa, "closing-qa.txt"), $"Hidden before shutdown: {!IsVisible}\n");
+        try { await _viewModel.ShutdownAsync(); }
+        finally { _shutdownComplete = true; Close(); }
     }
 
     private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs args)
@@ -420,7 +431,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageList.ScrollIntoView(_viewModel.Messages[^1]);
+        MessageList.ScrollIntoView(_viewModel.DisplayMessages[^1]);
         MessageList.UpdateLayout();
         var scrollViewer = FindVisualChild<ScrollViewer>(MessageList);
         scrollViewer?.ScrollToEnd();

@@ -14,7 +14,7 @@ using PIHarness.Core.Sessions;
 
 namespace PIHarness.App.ViewModels;
 
-public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SynchronizationContext? _uiContext;
@@ -36,6 +36,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
     private TokenUsage _totalUsage;
     private bool _isSending;
     private bool _hasUnread;
+    private bool _needsGeneratedTitle;
 
     public ConversationViewModel(string key, Func<PiRpcClient> rpcClientFactory, SynchronizationContext? uiContext, string title = "选择一个会话")
     {
@@ -47,6 +48,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         StopCommand = new AsyncRelayCommand(StopAsync, () => State == ChatSessionState.Streaming);
         ReconnectCommand = new AsyncRelayCommand(ReconnectAsync, () => CanReconnect);
         ReloadCommand = new AsyncRelayCommand(ReloadAsync, () => CanReload);
+        Messages.CollectionChanged += OnProjectionChanged;
     }
 
     /// <summary>Identity inside <see cref="MainViewModel"/>: the session file path, or "new:cwd" before pi persists one.</summary>
@@ -60,6 +62,17 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
 
     public BulkObservableCollection<ChatItemViewModel> Messages { get; } = [];
     public ObservableCollection<ImageAttachmentViewModel> Attachments { get; } = [];
+    public ObservableCollection<FileReferenceViewModel> FileReferences { get; } = [];
+    private int _fileReferenceSequence;
+    public string AddFileReference(string name, string originalText)
+    {
+        var reference = new FileReferenceViewModel($"〔文件{++_fileReferenceSequence}〕", name, originalText.TrimEnd());
+        FileReferences.Add(reference);
+        return reference.Token + " ";
+    }
+
+    public string ExpandFileReferences(string input) => System.Text.RegularExpressions.Regex.Replace(input, "〔文件[0-9]+〕",
+        match => FileReferences.FirstOrDefault(reference => reference.Token == match.Value)?.OriginalText ?? match.Value);
     public ObservableCollection<ComposerSuggestion> SlashCommands { get; } = [];
     public ObservableCollection<ModelOptionViewModel> Models { get; } = [];
     public string CommandLoadStatus { get; private set; } = "选择会话后加载 Pi 命令与 skills";
@@ -204,6 +217,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
             State = ChatSessionState.Starting;
             Messages.Clear();
             Title = "新对话";
+            _needsGeneratedTitle = true;
             Cwd = Path.GetFullPath(cwd);
             ModelText = string.Empty;
             Models.Clear();
@@ -230,6 +244,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
             Messages.Clear();
             SessionPath = Path.GetFullPath(session.SessionPath);
             Title = session.Title;
+            _needsGeneratedTitle = false;
             Cwd = session.Cwd;
             ModelText = string.Empty;
             Models.Clear();
@@ -250,7 +265,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var message = InputText.Trim();
+        var message = ExpandFileReferences(InputText).Trim();
         if (message.Equals("/reload", StringComparison.OrdinalIgnoreCase) && Attachments.Count == 0)
         {
             InputText = string.Empty;
@@ -266,6 +281,9 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(CanEditComposer));
             OnPropertyChanged(nameof(CanSwitchSession));
             Messages.Add(sentItem);
+            if (_needsGeneratedTitle || string.IsNullOrWhiteSpace(Title) || Title == "新对话" || Title == "选择一个会话")
+                Title = message.ReplaceLineEndings(" ").Trim()[..Math.Min(60, message.ReplaceLineEndings(" ").Trim().Length)];
+            _needsGeneratedTitle = false;
             _streamItems.Clear();
             _toolItems.Clear();
             _activeTurnUsage = default;
@@ -281,6 +299,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
             {
                 InputText = string.Empty;
                 Attachments.Clear();
+                FileReferences.Clear();
             }).ConfigureAwait(false);
             // An extension can handle a command without starting an agent turn.
             if (message.StartsWith('/'))
@@ -443,14 +462,15 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(title))
         {
             Title = title;
+            _needsGeneratedTitle = false;
         }
     }
 
     // Synthetic presentation state for public documentation screenshots; never touches a pi process.
-    internal void PrepareDocumentationDemo()
+    internal void PrepareDocumentationDemo(string? cwd = null)
     {
         Title = "Pi Harbor 使用演示";
-        Cwd = "示例对话 · 左侧真实项目名称与会话标题已遮挡";
+        Cwd = cwd ?? "示例对话 · 左侧真实项目名称与会话标题已遮挡";
         StatusText = "本地会话自动发现已开启";
         ModelText = "";
         var demoModel = new ModelOptionViewModel("demo", "model", "模型示例");
@@ -536,7 +556,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         }
 
         if (data.TryGetProperty("sessionName", out var name) && name.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(name.GetString()))
+            !string.IsNullOrWhiteSpace(name.GetString()) && (string.IsNullOrWhiteSpace(Title) || Title == "新对话"))
         {
             Title = name.GetString()!;
         }
@@ -572,6 +592,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
     {
         SlashCommands.Clear();
         SlashCommands.Add(new ComposerSuggestion("/reload", "重载当前会话的配置、提示词与 skills", "/reload"));
+        SlashCommands.Add(new ComposerSuggestion("/file", "引用项目文件（也可输入 @）", "/file "));
         CommandLoadStatus = "当前 Pi 未提供命令；可继续输入文字";
         if (response is not { } value || !value.TryGetProperty("data", out var data) ||
             !data.TryGetProperty("commands", out var commands) || commands.ValueKind != JsonValueKind.Array) return;
@@ -938,6 +959,7 @@ public sealed class ConversationViewModel : ObservableObject, IAsyncDisposable
         Messages.Add(new ChatItemViewModel(ChatItemKind.Metrics, metrics.ToDisplayText()));
         TotalUsage += _activeTurnUsage;
         _hasActiveTurn = false;
+        _activityGroup?.CompleteActivity();
         Attention?.Invoke(this, "settled");
     }
 

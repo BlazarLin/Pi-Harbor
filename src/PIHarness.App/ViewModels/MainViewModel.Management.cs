@@ -122,7 +122,7 @@ public sealed partial class MainViewModel
 
     public void MarkActiveRead()
     {
-        if (IsWindowActive && Active.SessionPath is { } path) SetUnread(path, false);
+        if (IsWindowActive && !IsOverviewVisible && Active.SessionPath is { } path) SetUnread(path, false);
     }
 
     public async Task OpenNotificationAsync(string sessionPath)
@@ -160,5 +160,6 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(BackgroundActivityText));
         UpdateTreeState();
         ScheduleSearch(catalogChanged: true);
+        _ = RefreshOverviewAsync();
     }
 }

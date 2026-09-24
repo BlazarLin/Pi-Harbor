@@ -69,7 +69,7 @@ public partial class MainWindow
             CompletionList.ItemsSource = suggestions;
             CompletionList.SelectedIndex = suggestions.Count > 0 ? 0 : -1;
             CompletionHint.Text = suggestions.Count > 0
-                ? (query.Trigger == '@' ? "项目文件（最多 40 项）" : "Pi 命令与 skills") + " · ↑↓ 选择 · Tab / Enter 插入 · Esc 关闭"
+                ? (query.Trigger == '@' ? $"项目文件（最多 {ComposerCompletion.MaxFileResults} 项，文本优先）" : "Pi 命令与 skills") + " · ↑↓ 选择 · Tab / Enter 插入 · Esc 关闭"
                 : query.Trigger == '@' ? "未找到文件；请缩小关键词或确认已选择项目（跳过构建目录，限时搜索）" : _viewModel.CommandLoadStatus;
         }
         catch (OperationCanceledException) { }
@@ -128,13 +128,23 @@ public partial class MainWindow
         try
         {
             PromptBox.Select(query.Start, query.Length);
-            PromptBox.SelectedText = suggestion.InsertText;
-            PromptBox.CaretIndex = query.Start + suggestion.InsertText.Length;
+            var insert = suggestion.IsFile ? _viewModel.Active.AddFileReference(suggestion.Label, suggestion.InsertText) : suggestion.InsertText;
+            PromptBox.SelectedText = insert;
+            PromptBox.CaretIndex = query.Start + insert.Length;
             PromptBox.SelectionLength = 0;
             CompletionPanel.Visibility = Visibility.Collapsed;
             PromptBox.Focus();
         }
         finally { _acceptingCompletion = false; }
+        if (suggestion.Label == "/file") RefreshCompletion();
+    }
+
+    private void OnRemoveFileReferenceClick(object sender, RoutedEventArgs args)
+    {
+        if (!_viewModel.CanEditComposer || sender is not Button { Tag: FileReferenceViewModel reference }) return;
+        _viewModel.InputText = _viewModel.InputText.Replace(reference.Token, "", StringComparison.Ordinal);
+        _viewModel.Active.FileReferences.Remove(reference);
+        PromptBox.Focus();
     }
 
     private void OnPromptPasting(object sender, DataObjectPastingEventArgs args)

@@ -80,7 +80,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // Forwarded conversation state; the active conversation can change at any time.
     public BulkObservableCollection<ChatItemViewModel> Messages => Active.Messages;
+    public BulkObservableCollection<ChatItemViewModel> DisplayMessages => Active.DisplayMessages;
     public ObservableCollection<ImageAttachmentViewModel> Attachments => Active.Attachments;
+    public ObservableCollection<FileReferenceViewModel> FileReferences => Active.FileReferences;
     public ObservableCollection<ComposerSuggestion> SlashCommands => Active.SlashCommands;
     public ObservableCollection<ModelOptionViewModel> Models => Active.Models;
     public string CommandLoadStatus => Active.CommandLoadStatus;
@@ -169,12 +171,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var key = "new:" + Path.GetFullPath(cwd);
-        if (_conversations.TryGetValue(key, out var existing))
-        {
-            Activate(existing);
-            return;
-        }
+        var key = "new:" + Guid.NewGuid().ToString("N");
 
         var conversation = CreateConversation(key, "新对话");
         _conversations[key] = conversation;
@@ -211,6 +208,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void Activate(ConversationViewModel conversation)
     {
+        IsOverviewVisible = false;
         if (ReferenceEquals(Active, conversation))
         {
             MarkActiveRead();
@@ -244,7 +242,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private static readonly string[] ForwardedPropertyNames =
     [
-        nameof(Messages), nameof(Attachments), nameof(SlashCommands), nameof(Models), nameof(CommandLoadStatus),
+        nameof(Messages), nameof(DisplayMessages), nameof(Attachments), nameof(FileReferences), nameof(SlashCommands), nameof(Models), nameof(CommandLoadStatus),
         nameof(InputText), nameof(CurrentTitle), nameof(CurrentCwd), nameof(ModelText), nameof(SelectedModel),
         nameof(StatusText), nameof(CanEditComposer), nameof(SelectedSessionPath), nameof(State), nameof(CanSend), nameof(CanSwitchSession),
         nameof(CanChangeModel), nameof(IsStreaming), nameof(CanReconnect), nameof(EmptyConversationText),
@@ -284,6 +282,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             OnPropertyChanged(args.PropertyName!);
         }
+        if (args.PropertyName == nameof(ConversationViewModel.Title))
+        {
+            if (ReferenceEquals(conversation, Active)) OnPropertyChanged(nameof(CurrentTitle));
+            UpdateTreeState();
+        }
+        if (args.PropertyName == nameof(ConversationViewModel.Cwd) && ReferenceEquals(conversation, Active))
+            OnPropertyChanged(nameof(CurrentCwd));
 
         if (args.PropertyName is nameof(ConversationViewModel.HasUnread) or nameof(ConversationViewModel.IsBusy))
         {
@@ -297,7 +302,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void OnConversationAttention(ConversationViewModel conversation, string kind)
     {
         if (_shuttingDown) return;
-        if (!ReferenceEquals(conversation, Active) || !IsWindowActive)
+        if (!ReferenceEquals(conversation, Active) || !IsWindowActive || IsOverviewVisible)
         {
             conversation.HasUnread = true;
             if (conversation.SessionPath is { } path) SetUnread(path, true);
@@ -349,10 +354,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var session in Projects.SelectMany(project => project.Sessions)) session.UpdateRelativeActivity(now);
         OnPropertyChanged(nameof(SessionStatistics));
         OnPropertyChanged(nameof(ActiveSessionCount));
+        if (IsOverviewVisible) _ = RefreshOverviewAsync();
     }
 
     internal void PrepareDocumentationDemo()
     {
+        IsOverviewVisible = false;
         // Only synthetic conversation content is used for public screenshots.
         Active.PrepareDocumentationDemo();
         Messages.Clear();
@@ -375,6 +382,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _shuttingDown = true;
+        _overviewCancellation.Cancel();
+        await _overviewTask.ConfigureAwait(false);
         await _managementLoaded.ConfigureAwait(false);
         await _managementSaved.ConfigureAwait(false);
         _searchCts?.Cancel();
@@ -563,6 +572,7 @@ public sealed class SessionItemViewModel(SessionSummary session) : ObservableObj
         if (!string.IsNullOrWhiteSpace(title) && !string.Equals(Title, title, StringComparison.Ordinal))
         {
             Session = Session with { Title = title };
+            OnPropertyChanged(nameof(Title));
             OnPropertyChanged(nameof(ActivityToolTip));
         }
     }
@@ -596,6 +606,16 @@ public sealed class SessionItemViewModel(SessionSummary session) : ObservableObj
 
 public sealed class ChatItemViewModel : ObservableObject
 {
+    private ObservableCollection<ChatItemViewModel>? _children;
+    private bool _manuallyExpanded;
+    public ObservableCollection<ChatItemViewModel> Children => _children ??= [];
+    public void ExpandAutomatically() => SetProperty(ref _isExpanded, true, nameof(IsExpanded));
+    public void CompleteActivity()
+    {
+        IsCompleted = true;
+        if (!_manuallyExpanded) SetProperty(ref _isExpanded, false, nameof(IsExpanded));
+        Title = $"思考与工具过程 · {Children.Count} 步 · 已结束";
+    }
     private string _text;
     private string _title = string.Empty;
     private string _key = string.Empty;
@@ -653,7 +673,11 @@ public sealed class ChatItemViewModel : ObservableObject
     public bool IsExpanded
     {
         get => _isExpanded;
-        set => SetProperty(ref _isExpanded, value);
+        set
+        {
+            if (SetProperty(ref _isExpanded, value) && Kind == ChatItemKind.ActivityGroup)
+                _manuallyExpanded = value;
+        }
     }
 
     /// <summary>Briefly set when a global search jumps to this message.</summary>
