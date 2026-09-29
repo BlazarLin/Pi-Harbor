@@ -152,6 +152,11 @@ public sealed partial class MainViewModel
             foreach (var session in item.Sessions) session.IsLatest = AreSameSessionPath(session.SessionPath, latestPath);
             Projects.Add(item);
         }
+        SidebarRecentSessions.Clear();
+        foreach (var session in Projects.SelectMany(project => project.Sessions)
+                     .OrderByDescending(session => session.LastActivityAt)
+                     .ThenBy(session => session.SessionPath, StringComparer.OrdinalIgnoreCase).Take(10))
+            SidebarRecentSessions.Add(session);
         OnPropertyChanged(nameof(TotalSessionCount));
         OnPropertyChanged(nameof(ActiveSessionCount));
         OnPropertyChanged(nameof(ArchivedSessionCount));

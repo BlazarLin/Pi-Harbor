@@ -28,7 +28,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.6.0";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.7.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
@@ -69,6 +69,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public event Action<ConversationViewModel, string>? ConversationAttention;
 
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
+    public ObservableCollection<SessionItemViewModel> SidebarRecentSessions { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand SendCommand => Active.SendCommand;
@@ -586,7 +587,7 @@ public sealed class SessionItemViewModel(SessionSummary session) : ObservableObj
     public bool IsStarred { get => _isStarred; set => SetProperty(ref _isStarred, value); }
 
     public string RelativeActivityText => _relativeActivityText;
-    public string ActivityToolTip => $"{Title}\n最后活动：{LastActivityAt.ToLocalTime():yyyy-MM-dd HH:mm}";
+    public string ActivityToolTip => $"{Title}\n距上次对话：{RelativeActivityText}\n最后活动：{LastActivityAt.ToLocalTime():yyyy-MM-dd HH:mm}\n{Cwd}";
     public void UpdateRelativeActivity(DateTimeOffset now)
     {
         if (SetProperty(ref _relativeActivityText, RelativeActivityTime.Format(LastActivityAt, now), nameof(RelativeActivityText)))

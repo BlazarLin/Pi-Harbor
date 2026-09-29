@@ -18,6 +18,12 @@ public partial class MainWindow
         await SettleStyleLayoutAsync();
         check(OverviewPanel.IsVisible && _viewModel.UsageDays.Count == 28 && _viewModel.UsageDays.Any(day => day.Usage.Tokens > 0), "Overview 展示全部本机会话的 28 天用量");
         check(_viewModel.RecentSessions.Count == 3, "首页最近会话包含外部写入的独立测试会话");
+        check(RecentSessionTree.IsVisible && RecentSessionTree.Items.Count == 3 &&
+              RecentSessionTree.TranslatePoint(new Point(), this).Y < SessionTree.TranslatePoint(new Point(), this).Y,
+              "最近对话快捷区位于文件夹分类上方");
+        var recentLabel = FindSearchQaLabels(RecentSessionTree).First(label => label.Text == _viewModel.SidebarRecentSessions[0].Title);
+        check(FindContextMenuAncestor(recentLabel)?.ToolTip is string tip && tip.Contains("距上次对话：") && tip.Contains("分钟前"),
+              "最近对话悬停包含距上次交流的时间差");
         CaptureWindow(Path.Combine(directory, "overview.png"));
         check(FindQaButtons(SessionTree).Any(button => button.Tag is string cwd && Directory.Exists(cwd)), "文件夹行提供带正确目录的加号按钮");
         check(!FindQaButtons(this).Any(button => Equals(button.Content, "选择目录新建…") || Equals(button.Content, "默认目录…")), "新建附属选项不常驻主界面");
@@ -73,5 +79,25 @@ public partial class MainWindow
         check(group.IsExpanded, "手动展开的整轮过程在结束时保留");
         await SettleStyleLayoutAsync();
         CaptureWindow(Path.Combine(directory, "turn-expanded.png"));
+        for (var i = 0; i < 9; i++)
+        {
+            var timestamp = DateTimeOffset.UtcNow.AddHours(-i - 2);
+            File.WriteAllLines(Path.Combine(directory, "sessions", $"recent-extra-{i}.jsonl"), [
+                System.Text.Json.JsonSerializer.Serialize(new { type = "session", version = 3, cwd = cwdDemo, timestamp }),
+                System.Text.Json.JsonSerializer.Serialize(new { type = "message", id = "u", timestamp, message = new { role = "user", content = $"演示任务 {i + 1}" } })
+            ]);
+        }
+        await _viewModel.RefreshCatalogAsync();
+        await SettleStyleLayoutAsync();
+        check(RecentSessionTree.Items.Count == 10 && _viewModel.Projects.Sum(project => project.Sessions.Count) == 12,
+              "最近区只显示十条，文件夹保留全部十二条");
+        CaptureWindow(Path.Combine(directory, "recent-ten.png"));
+        var originalHeight = Height;
+        Height = MinHeight;
+        await SettleStyleLayoutAsync();
+        check(RecentSessionTree.ActualHeight > 40 && SessionTree.ActualHeight > 40,
+              "最小窗口高度仍可浏览最近区和文件夹区");
+        CaptureWindow(Path.Combine(directory, "recent-compact.png"));
+        Height = originalHeight;
     }
 }

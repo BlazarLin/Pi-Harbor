@@ -25,14 +25,14 @@ public partial class MainWindow
         var scroll = FindVisualChild<ScrollViewer>(MessageList);
         scroll?.ScrollToTop();
         await SettleStyleLayoutAsync();
-        var layer = AdornerLayer.GetAdornerLayer(SessionTree);
+        var layer = AdornerLayer.GetAdornerLayer(SidebarListsGrid);
         if (layer is null) throw new InvalidOperationException("无法添加隐私遮挡层，取消截图。");
-        var masks = FindPrivateLabels(SessionTree).Select(label =>
+        var masks = FindPrivateLabels(SidebarListsGrid).Select(label =>
         {
-            var origin = label.TranslatePoint(new Point(0, 0), SessionTree);
+            var origin = label.TranslatePoint(new Point(0, 0), SidebarListsGrid);
             return new Rect(origin.X, origin.Y, label.ActualWidth, label.ActualHeight);
         }).Where(rect => rect.Width > 0 && rect.Height > 0).ToArray();
-        var mosaic = new PrivacyMosaicAdorner(SessionTree, masks);
+        var mosaic = new PrivacyMosaicAdorner(SidebarListsGrid, masks);
         layer.Add(mosaic);
         await SettleStyleLayoutAsync();
         CaptureWindow(Path.Combine(directory, "overview.png"));
