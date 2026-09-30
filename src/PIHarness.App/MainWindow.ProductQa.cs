@@ -18,10 +18,11 @@ public partial class MainWindow
         await SettleStyleLayoutAsync();
         check(OverviewPanel.IsVisible && _viewModel.UsageDays.Count == 28 && _viewModel.UsageDays.Any(day => day.Usage.Tokens > 0), "Overview 展示全部本机会话的 28 天用量");
         check(_viewModel.RecentSessions.Count == 3, "首页最近会话包含外部写入的独立测试会话");
-        check(RecentSessionTree.IsVisible && RecentSessionTree.Items.Count == 3 &&
-              RecentSessionTree.TranslatePoint(new Point(), this).Y < SessionTree.TranslatePoint(new Point(), this).Y,
-              "最近对话快捷区位于文件夹分类上方");
-        var recentLabel = FindSearchQaLabels(RecentSessionTree).First(label => label.Text == _viewModel.SidebarRecentSessions[0].Title);
+        var recentGroup = SessionTree.ItemContainerGenerator.ContainerFromItem(_viewModel.RecentSessionGroup) as TreeViewItem;
+        check(recentGroup is { IsExpanded: true } && recentGroup.Items.Count == 3 &&
+              ReferenceEquals(SessionTree.Items[0], _viewModel.RecentSessionGroup),
+              "最近对话作为统一列表的首个可折叠分组");
+        var recentLabel = FindSearchQaLabels(recentGroup!).First(label => label.Text == _viewModel.SidebarRecentSessions[0].Title);
         check(FindContextMenuAncestor(recentLabel)?.ToolTip is string tip && tip.Contains("距上次对话：") && tip.Contains("分钟前"),
               "最近对话悬停包含距上次交流的时间差");
         CaptureWindow(Path.Combine(directory, "overview.png"));
@@ -89,15 +90,47 @@ public partial class MainWindow
         }
         await _viewModel.RefreshCatalogAsync();
         await SettleStyleLayoutAsync();
-        check(RecentSessionTree.Items.Count == 10 && _viewModel.Projects.Sum(project => project.Sessions.Count) == 12,
+        check(_viewModel.SidebarRecentSessions.Count == 10 && _viewModel.Projects.Sum(project => project.Sessions.Count) == 12,
               "最近区只显示十条，文件夹保留全部十二条");
         CaptureWindow(Path.Combine(directory, "recent-ten.png"));
         var originalHeight = Height;
         Height = MinHeight;
         await SettleStyleLayoutAsync();
-        check(RecentSessionTree.ActualHeight > 40 && SessionTree.ActualHeight > 40,
-              "最小窗口高度仍可浏览最近区和文件夹区");
+        var treeScroll = FindVisualChild<ScrollViewer>(SessionTree)!;
+        check(CountSidebarScrollViewers(SessionTree) == 1 &&
+              !FindSearchQaLabels(SidebarListsGrid).Any(label => label.Text == "按文件夹分类"),
+              "侧栏只有一条滚动通道且无多余分类标题");
+        treeScroll.ScrollToEnd();
+        await SettleStyleLayoutAsync();
+        check(treeScroll.VerticalOffset > 0 && FindSearchQaLabels(SessionTree).Any(label => label.Text == "演示任务 9"),
+              "最小窗口共用滚动条仍能到达末尾文件夹会话");
+        treeScroll.ScrollToTop();
+        await SettleStyleLayoutAsync();
+        recentGroup = (TreeViewItem)SessionTree.ItemContainerGenerator.ContainerFromItem(_viewModel.RecentSessionGroup);
+        ToggleProjectItem(recentGroup);
+        await SettleStyleLayoutAsync();
+        var projectGroup = (TreeViewItem)SessionTree.ItemContainerGenerator.ContainerFromItem(_viewModel.Projects[0]);
+        check(!_viewModel.RecentSessionGroup.IsExpanded &&
+              projectGroup.TranslatePoint(new Point(), SessionTree).Y < 70 &&
+              SessionTree.ActualHeight > 150,
+              "折叠最近对话立即让出空间给文件夹，最小窗口不切成两块");
         CaptureWindow(Path.Combine(directory, "recent-compact.png"));
+        _viewModel.SessionFilter = 2;
+        await _viewModel.RefreshCatalogAsync();
+        await SettleStyleLayoutAsync();
+        recentGroup = (TreeViewItem)SessionTree.ItemContainerGenerator.ContainerFromItem(_viewModel.RecentSessionGroup);
+        check(!recentGroup.IsExpanded, "刷新和筛选后保留最近分组的折叠状态");
+        ToggleProjectItem(recentGroup);
+        await SettleStyleLayoutAsync();
+        check(_viewModel.RecentSessionGroup.IsExpanded && recentGroup.Items.Count == 10, "最近分组可再次展开全部十条");
         Height = originalHeight;
+    }
+
+    private static int CountSidebarScrollViewers(DependencyObject parent)
+    {
+        var count = parent is ScrollViewer ? 1 : 0;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            count += CountSidebarScrollViewers(VisualTreeHelper.GetChild(parent, i));
+        return count;
     }
 }

@@ -44,6 +44,8 @@ History favors concise Chinese action summaries, such as `修复云端测试对�
 
 ## Agent Workflow & Security
 
+Review each feature from the user's workflow before acceptance: check information hierarchy, space usage, unnecessary labels/actions, scrolling, focus, and state continuity. For related sidebar lists, prefer one scrolling surface and collapsible groups. Verify realistic item counts and minimum window size with actual UI interaction; control existence alone is insufficient.
+
 Unless explicitly requested, retain the version number and skip release packaging, publishing, and installer verification. After code changes, refresh the generated executable and report its path. If that output is running, use a separate `artifacts/` directory instead of stopping it or overwriting loaded files. Reserve `build-release.ps1 -IncludeInstaller` for requested releases.
 
 Never commit real session JSONL, credentials, `.pi/`, logs, build outputs, or unsanitized screenshots. Report vulnerabilities via `SECURITY.md`.

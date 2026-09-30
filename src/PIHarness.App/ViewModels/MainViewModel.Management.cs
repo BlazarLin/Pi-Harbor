@@ -157,6 +157,9 @@ public sealed partial class MainViewModel
                      .OrderByDescending(session => session.LastActivityAt)
                      .ThenBy(session => session.SessionPath, StringComparer.OrdinalIgnoreCase).Take(10))
             SidebarRecentSessions.Add(session);
+        SidebarGroups.Clear();
+        SidebarGroups.Add(RecentSessionGroup);
+        foreach (var project in Projects) SidebarGroups.Add(project);
         OnPropertyChanged(nameof(TotalSessionCount));
         OnPropertyChanged(nameof(ActiveSessionCount));
         OnPropertyChanged(nameof(ArchivedSessionCount));

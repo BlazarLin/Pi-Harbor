@@ -23,6 +23,9 @@ internal static class RecentSidebarTests
         await vm.InitializeAsync();
         AssertEx.Equal(12, vm.TotalSessionCount, "最近区不限制本机索引");
         AssertEx.Equal(10, vm.SidebarRecentSessions.Count, "最多十条");
+        AssertEx.True(ReferenceEquals(vm.RecentSessionGroup, vm.SidebarGroups[0]), "最近分组在同一列表顶部");
+        AssertEx.Equal(3, vm.SidebarGroups.Count, "最近分组与两个文件夹处于同一级");
+        vm.RecentSessionGroup.IsExpanded = false;
         AssertEx.Equal("对话 0", vm.SidebarRecentSessions[0].Title, "跨文件夹倒序");
         AssertEx.Equal("对话 9", vm.SidebarRecentSessions[9].Title, "最旧两条不进快捷区");
         var first = vm.SidebarRecentSessions[0];
@@ -42,5 +45,6 @@ internal static class RecentSidebarTests
             JsonSerializer.Serialize(new { type = "message", id = "a", timestamp = now, message = new { role = "assistant", content = "最新结果" } }) + "\n");
         await vm.RefreshCatalogAsync();
         AssertEx.Equal("对话 11", vm.SidebarRecentSessions[0].Title, "终端追加后重新排序");
+        AssertEx.False(vm.RecentSessionGroup.IsExpanded, "刷新、归档和筛选不重置用户折叠选择");
     }
 }

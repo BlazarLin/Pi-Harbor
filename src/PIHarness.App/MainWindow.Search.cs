@@ -20,7 +20,6 @@ public partial class MainWindow
         else if (args.Key == Key.F2 && Keyboard.Modifiers == ModifierKeys.None)
         {
             var session = SessionTree.IsKeyboardFocusWithin ? (SessionTree.SelectedItem as SessionItemViewModel)?.Session
-                : RecentSessionTree.IsKeyboardFocusWithin ? (RecentSessionTree.SelectedItem as SessionItemViewModel)?.Session
                 : GlobalSearchResults.IsKeyboardFocusWithin ? (GlobalSearchResults.SelectedItem as SessionSearchItemViewModel)?.Session : null;
             if (session is not null) { args.Handled = true; await RenameSessionAsync(session); }
         }

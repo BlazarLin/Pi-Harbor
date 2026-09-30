@@ -243,7 +243,7 @@ public partial class MainWindow : Window
             _viewModel.IsOverviewVisible = false;
             _viewModel.MarkActiveRead();
         }
-        if (item?.Header is ProjectGroupViewModel)
+        if (item?.Header is ProjectGroupViewModel or RecentSessionsGroupViewModel)
         {
             ToggleProjectItem(item);
             args.Handled = true;

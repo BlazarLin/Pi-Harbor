@@ -69,7 +69,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public event Action<ConversationViewModel, string>? ConversationAttention;
 
     public ObservableCollection<ProjectGroupViewModel> Projects { get; } = [];
-    public ObservableCollection<SessionItemViewModel> SidebarRecentSessions { get; } = [];
+    public RecentSessionsGroupViewModel RecentSessionGroup { get; } = new();
+    public ObservableCollection<SessionItemViewModel> SidebarRecentSessions => RecentSessionGroup.Sessions;
+    public ObservableCollection<object> SidebarGroups { get; } = [];
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand SendCommand => Active.SendCommand;
@@ -520,6 +522,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".pi", "agent", "sessions");
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+}
+
+public sealed class RecentSessionsGroupViewModel : ObservableObject
+{
+    private bool _isExpanded = true;
+    public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
+    public ObservableCollection<SessionItemViewModel> Sessions { get; } = [];
 }
 
 public sealed class ProjectGroupViewModel : ObservableObject

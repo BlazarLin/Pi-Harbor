@@ -52,7 +52,9 @@ public partial class MainWindow
         ModelSelector.IsDropDownOpen = false;
 
         SessionTree.UpdateLayout();
-        var projectItem = SessionTree.ItemContainerGenerator.ContainerFromIndex(0) as TreeViewItem;
+        _viewModel.RecentSessionGroup.IsExpanded = false;
+        SessionTree.UpdateLayout();
+        var projectItem = SessionTree.ItemContainerGenerator.ContainerFromItem(_viewModel.Projects.FirstOrDefault()) as TreeViewItem;
         var bProjectReady = projectItem is not null;
         if (projectItem is not null)
         {
@@ -90,8 +92,7 @@ public partial class MainWindow
         if (currentSession is not null)
         {
             var currentProject = _viewModel.Projects.Single(project => project.Sessions.Contains(currentSession));
-            var nProjectIndex = _viewModel.Projects.IndexOf(currentProject);
-            var currentProjectItem = SessionTree.ItemContainerGenerator.ContainerFromIndex(nProjectIndex) as TreeViewItem;
+            var currentProjectItem = SessionTree.ItemContainerGenerator.ContainerFromItem(currentProject) as TreeViewItem;
             if (currentProjectItem is not null)
             {
                 currentProjectItem.IsExpanded = true;
