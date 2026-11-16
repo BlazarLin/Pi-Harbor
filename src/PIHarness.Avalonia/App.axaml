@@ -1,0 +1,93 @@
+<Application x:Class="PIHarness.Avalonia.App"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:p="clr-namespace:PIHarness.Avalonia.Presentation"
+             RequestedThemeVariant="Dark">
+    <Application.Styles>
+        <FluentTheme />
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="Root" Background="{TemplateBinding Background}" CornerRadius="6"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ Border#Root">
+            <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ Border#Root">
+            <Setter Property="Background" Value="{DynamicResource SelectedBrush}" />
+        </Style>
+        <Style Selector="Button.flat:disabled">
+            <Setter Property="Opacity" Value="0.42" />
+        </Style>
+        <Style Selector="Button.accent">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="AccentRoot" Background="{TemplateBinding Background}" CornerRadius="16"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.accent:pointerover /template/ Border#AccentRoot">
+            <Setter Property="Background" Value="#9087F2" />
+        </Style>
+        <Style Selector="Button.accent:pressed /template/ Border#AccentRoot">
+            <Setter Property="Background" Value="#665BCB" />
+        </Style>
+        <Style Selector="Button.accent:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+        <Style Selector="TextBox.harbor">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+    </Application.Styles>
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Pi Harbor dark palette (mirrors Themes/Colors.xaml). -->
+            <SolidColorBrush x:Key="WindowBrush" Color="#171717" />
+            <SolidColorBrush x:Key="SidebarBrush" Color="#1D1C1C" />
+            <SolidColorBrush x:Key="PanelBrush" Color="#232222" />
+            <SolidColorBrush x:Key="HoverBrush" Color="#2B2A2A" />
+            <SolidColorBrush x:Key="SelectedBrush" Color="#343232" />
+            <SolidColorBrush x:Key="CurrentSessionBrush" Color="#454064" />
+            <SolidColorBrush x:Key="BorderBrush" Color="#383636" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="SecondaryTextBrush" Color="#A8A3A3" />
+            <SolidColorBrush x:Key="MutedTextBrush" Color="#777272" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#7D73EA" />
+            <SolidColorBrush x:Key="UserBubbleBrush" Color="#37334F" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="#F18B8B" />
+            <SolidColorBrush x:Key="StarBrush" Color="#E8B93E" />
+            <SolidColorBrush x:Key="UnreadBrush" Color="#7D73EA" />
+            <SolidColorBrush x:Key="HighlightBrush" Color="#4A4470" />
+
+            <p:StringNotEmptyToBoolConverter x:Key="StringNotEmptyToBool" />
+            <p:BytesToBitmapConverter x:Key="BytesToBitmap" />
+            <p:MessageTemplateSelector x:Key="MessageTemplateSelector" />
+            <p:SidebarTemplateSelector x:Key="SidebarTemplateSelector" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

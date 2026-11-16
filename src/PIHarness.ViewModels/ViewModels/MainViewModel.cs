@@ -42,6 +42,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly Dictionary<string, ConversationViewModel> _conversations = new(StringComparer.OrdinalIgnoreCase);
     private bool _shuttingDown;
     private bool _disposed;
+    public bool IsDisposed => _disposed;
 
     public MainViewModel(string? sessionRoot = null, Func<PiRpcClient>? rpcClientFactory = null, string? namesDirectory = null)
     {
@@ -113,6 +114,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool CanReconnect => Active.CanReconnect;
     public string EmptyConversationText => Active.EmptyConversationText;
     public string MessageCountText => Active.MessageCountText;
+    public bool HasNoMessages => Active.HasNoMessages;
     public string TotalTokensText => Active.TotalTokensText;
     public bool IsLoadingHistory => Active.IsLoadingHistory;
 
@@ -257,7 +259,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         nameof(InputText), nameof(CurrentTitle), nameof(CurrentCwd), nameof(ModelText), nameof(SelectedModel),
         nameof(StatusText), nameof(CanEditComposer), nameof(SelectedSessionPath), nameof(State), nameof(CanSend), nameof(CanSwitchSession),
         nameof(CanChangeModel), nameof(IsStreaming), nameof(CanReconnect), nameof(EmptyConversationText),
-        nameof(MessageCountText), nameof(TotalTokensText), nameof(IsLoadingHistory),
+        nameof(MessageCountText), nameof(HasNoMessages), nameof(TotalTokensText), nameof(IsLoadingHistory),
         nameof(SendCommand), nameof(StopCommand), nameof(ReconnectCommand), nameof(ReloadCommand),
     ];
 

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Cross-platform frontend: same ViewModels/Core as the WPF app, runs on Windows and Linux. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <UseAvalonia>true</UseAvalonia>
+    <!-- Message templates are kind-keyed (no DataType); use reflection bindings to avoid compile-time DataContext checks. -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <AssemblyName>Pi-Harbor-Avalonia</AssemblyName>
+    <RootNamespace>PIHarness.Avalonia</RootNamespace>
+    <ApplicationIcon>..\PIHarness.App\Assets\Pi-Harbor.ico</ApplicationIcon>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
+    <PackageReference Include="Markdown.Avalonia" Version="12.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="..\PIHarness.App\Assets\Pi-Harbor.ico" Link="Assets\Pi-Harbor.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PIHarness.Core\PIHarness.Core.csproj" />
+    <ProjectReference Include="..\PIHarness.ViewModels\PIHarness.ViewModels.csproj" />
+  </ItemGroup>
+</Project>

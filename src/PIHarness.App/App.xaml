@@ -9,6 +9,7 @@
                 <ResourceDictionary Source="Themes/Colors.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <p:NonEmptyToVisibilityConverter x:Key="PendingCountConverter" />
+            <p:BytesToImageSourceConverter x:Key="BytesToImageSourceConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

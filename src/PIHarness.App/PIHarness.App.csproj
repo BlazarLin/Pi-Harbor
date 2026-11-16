@@ -35,5 +35,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PIHarness.Core\PIHarness.Core.csproj" />
+    <ProjectReference Include="..\PIHarness.ViewModels\PIHarness.ViewModels.csproj" />
   </ItemGroup>
 </Project>

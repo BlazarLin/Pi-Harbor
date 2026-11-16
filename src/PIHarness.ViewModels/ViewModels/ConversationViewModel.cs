@@ -184,6 +184,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         _ => "选择左侧会话，或新建一个对话",
     };
     public string MessageCountText => Messages.Count == 0 ? "尚无消息" : $"{Messages.Count} 项";
+    public bool HasNoMessages => Messages.Count == 0;
 
     /// <summary>Accumulated tokens of the loaded history plus every turn finished in this app run.</summary>
     public TokenUsage TotalUsage

@@ -28,7 +28,7 @@ internal static class ApplicationFeatureContractTests
         var repoRoot = Path.GetFullPath(Environment.CurrentDirectory);
         var projectPath = Path.Combine(repoRoot, "src", "PIHarness.App", "PIHarness.App.csproj");
         var xamlPath = Path.Combine(repoRoot, "src", "PIHarness.App", "MainWindow.xaml");
-        var viewModelPath = Path.Combine(repoRoot, "src", "PIHarness.App", "ViewModels", "MainViewModel.cs");
+        var viewModelPath = Path.Combine(repoRoot, "src", "PIHarness.ViewModels", "ViewModels", "MainViewModel.cs");
         var releaseScriptPath = Path.Combine(repoRoot, "scripts", "build-release.ps1");
         var iconPath = Path.Combine(repoRoot, "src", "PIHarness.App", "Assets", "Pi-Harbor.ico");
         var project = XDocument.Load(projectPath);

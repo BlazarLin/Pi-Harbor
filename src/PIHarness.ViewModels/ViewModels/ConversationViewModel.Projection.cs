@@ -10,6 +10,8 @@ public sealed partial class ConversationViewModel
 
     private void OnProjectionChanged(object? sender, NotifyCollectionChangedEventArgs args)
     {
+        OnPropertyChanged(nameof(HasNoMessages));
+        OnPropertyChanged(nameof(MessageCountText));
         if (args.Action == NotifyCollectionChangedAction.Add && args.NewItems is not null)
         {
             foreach (ChatItemViewModel item in args.NewItems) ProjectItem(item, DisplayMessages);

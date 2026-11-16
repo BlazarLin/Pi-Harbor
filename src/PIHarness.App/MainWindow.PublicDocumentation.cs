@@ -5,6 +5,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using PIHarness.App.Presentation;
 using PIHarness.App.ViewModels;
 
 namespace PIHarness.App;
@@ -47,7 +48,7 @@ public partial class MainWindow
         }
         var bitmap = new RenderTargetBitmap(320, 180, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(drawing);
-        _viewModel.AddAttachment(ImageAttachmentViewModel.FromBitmap(bitmap, "示例截图.png"));
+        _viewModel.AddAttachment(ImageConversion.FromBitmap(bitmap, "示例截图.png"));
         await SettleStyleLayoutAsync();
         CaptureWindow(Path.Combine(directory, "image-input.png"));
         ReturnToLatestButton.ApplyTemplate();

@@ -1,0 +1,530 @@
+<Window x:Class="PIHarness.Avalonia.MainWindow"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
+        xmlns:p="clr-namespace:PIHarness.Avalonia.Presentation"
+        xmlns:vm="clr-namespace:PIHarness.App.ViewModels;assembly=PIHarness.ViewModels"
+        Title="{Binding WindowTitle}"
+        Width="1280" Height="820" MinWidth="960" MinHeight="640"
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource PrimaryTextBrush}"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Noto Sans CJK SC" FontSize="14"
+        Loaded="OnLoaded" KeyDown="OnWindowKeyDown">
+    <Window.Resources>
+        <ContextMenu x:Key="MessageContextMenu">
+            <MenuItem Header="复制全文" Tag="{Binding}" Click="OnCopyMessageClick" />
+            <MenuItem Header="引用到输入框" Tag="{Binding}" Click="OnQuoteMessageClick" />
+        </ContextMenu>
+        <ContextMenu x:Key="QueuedMessageContextMenu">
+            <MenuItem Header="复制全文" Tag="{Binding}" Click="OnCopyMessageClick" />
+            <MenuItem Header="引用到输入框" Tag="{Binding}" Click="OnQuoteMessageClick" />
+            <MenuItem Header="撤回这条排队消息" Tag="{Binding}" Click="OnRevokeQueuedClick" />
+        </ContextMenu>
+
+        <!-- :::: Message templates (kind-keyed, resolved by MessageTemplateSelector). :::: -->
+        <DataTemplate x:Key="UserMessageTemplate">
+            <Grid Margin="70,8,18,8">
+                <Border MaxWidth="760" HorizontalAlignment="Right" Name="UserBubble"
+                        Background="{DynamicResource UserBubbleBrush}" CornerRadius="9" Padding="14,10"
+                        ContextMenu="{StaticResource MessageContextMenu}"
+                        Classes.highlighted="{Binding IsHighlighted}">
+                    <StackPanel>
+                        <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                        <ItemsControl ItemsSource="{Binding Images}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="flat" Margin="0,8,8,0" Padding="3" Tag="{Binding}"
+                                            ToolTip.Tip="{Binding Detail}" Click="OnPreviewImageClick">
+                                        <Image Source="{Binding Data, Converter={StaticResource BytesToBitmap}}"
+                                               Width="120" Height="80" Stretch="Uniform" />
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="QueuedMessageTemplate">
+            <Grid Margin="70,4,18,4">
+                <Border MaxWidth="760" HorizontalAlignment="Right" Background="Transparent"
+                        BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" CornerRadius="9"
+                        Padding="14,8" ContextMenu="{StaticResource QueuedMessageContextMenu}"
+                        Classes.highlighted="{Binding IsHighlighted}">
+                    <StackPanel>
+                        <TextBlock Text="⏳ 排队中 · 当前回答结束后自动发送（右键可撤回）"
+                                   Foreground="{DynamicResource AccentBrush}" FontSize="11" Margin="0,0,0,4" />
+                        <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                        <ItemsControl ItemsSource="{Binding Images}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="flat" Margin="0,8,8,0" Padding="3" Tag="{Binding}"
+                                            ToolTip.Tip="{Binding Detail}" Click="OnPreviewImageClick">
+                                        <Image Source="{Binding Data, Converter={StaticResource BytesToBitmap}}"
+                                               Width="120" Height="80" Stretch="Uniform" />
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssistantMessageTemplate">
+            <Grid Margin="18,8,70,8">
+                <Border MaxWidth="880" HorizontalAlignment="Left" Background="Transparent" CornerRadius="6" Padding="2"
+                        ContextMenu="{StaticResource MessageContextMenu}"
+                        Classes.highlighted="{Binding IsHighlighted}">
+                    <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SystemMessageTemplate">
+            <Border Margin="18,5,70,5" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="6" Padding="10,7" ContextMenu="{StaticResource MessageContextMenu}"
+                    Classes.highlighted="{Binding IsHighlighted}">
+                <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ErrorMessageTemplate">
+            <Border Margin="18,6,70,6" Background="#392525" CornerRadius="6" Padding="11,8"
+                    ContextMenu="{StaticResource MessageContextMenu}"
+                    Classes.highlighted="{Binding IsHighlighted}">
+                <TextBlock Text="{Binding Text}" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="MetricsMessageTemplate">
+            <Border Margin="18,2,70,10" Padding="0,2">
+                <TextBlock Text="{Binding Text}" Foreground="{DynamicResource MutedTextBrush}"
+                           FontSize="12" TextWrapping="Wrap" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ThinkingMessageTemplate">
+            <Expander Margin="18,4,70,4" Foreground="{DynamicResource SecondaryTextBrush}"
+                      Header="思考过程" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
+                <Border Margin="0,6,0,0" Padding="10,4" ContextMenu="{StaticResource MessageContextMenu}"
+                        Classes.highlighted="{Binding IsHighlighted}">
+                    <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                </Border>
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ToolMessageTemplate">
+            <Expander Margin="18,4,70,4" Foreground="{DynamicResource SecondaryTextBrush}"
+                      Header="{Binding Title}" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
+                <Border Background="{DynamicResource PanelBrush}" CornerRadius="6"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        Margin="0,6,0,0" Padding="10,7" ContextMenu="{StaticResource MessageContextMenu}"
+                        Classes.highlighted="{Binding IsHighlighted}">
+                    <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                </Border>
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ActivityGroupTemplate">
+            <Expander Margin="18,6,35,6" Foreground="{DynamicResource SecondaryTextBrush}"
+                      Header="{Binding Title}" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
+                <ItemsControl ItemsSource="{Binding Children}" ItemTemplate="{StaticResource MessageTemplateSelector}" />
+            </Expander>
+        </DataTemplate>
+
+        <!-- :::: Sidebar data templates. :::: -->
+        <TreeDataTemplate x:Key="RecentGroupTemplate" DataType="{x:Type vm:RecentSessionsGroupViewModel}" ItemsSource="{Binding Sessions}">
+            <TextBlock Text="最近 10 个对话" Margin="0,5,0,3" FontWeight="SemiBold"
+                       Foreground="{DynamicResource PrimaryTextBrush}" />
+        </TreeDataTemplate>
+
+        <DataTemplate x:Key="SessionItemTemplate" DataType="{x:Type vm:SessionItemViewModel}">
+            <StackPanel Margin="2,4,4,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource PrimaryTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="★" Foreground="{DynamicResource StarBrush}" Margin="6,0,0,0"
+                               IsVisible="{Binding IsStarred}" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                    <TextBlock Text="● 未读 " Foreground="{DynamicResource UnreadBrush}" FontSize="11"
+                               FontWeight="SemiBold" IsVisible="{Binding HasUnread}" />
+                    <TextBlock Text="◌ 处理中 " Foreground="{DynamicResource AccentBrush}" FontSize="11"
+                               IsVisible="{Binding IsBusy}" />
+                    <TextBlock Text="最新 · " Foreground="{DynamicResource AccentBrush}" FontSize="11"
+                               IsVisible="{Binding IsLatest}" />
+                    <TextBlock Text="{Binding RelativeActivityText}" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="11" />
+                </StackPanel>
+                <StackPanel.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="重命名…" Tag="{Binding Session}" Click="OnRenameSessionClick" />
+                        <MenuItem Header="{Binding StarMenuHeader}" Tag="{Binding Session}" Click="OnToggleStarClick" />
+                        <MenuItem Header="{Binding ArchiveMenuHeader}" Tag="{Binding Session}" Click="OnArchiveSessionClick" />
+                    </ContextMenu>
+                </StackPanel.ContextMenu>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProjectGroupTemplate" DataType="{x:Type vm:ProjectGroupViewModel}">
+            <Grid Margin="0,5,0,3" ToolTip.Tip="{Binding Cwd}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="22" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="▱" FontSize="17" Foreground="{DynamicResource SecondaryTextBrush}" />
+                <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource PrimaryTextBrush}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SearchResultTemplate">
+            <StackPanel Margin="5,6">
+                <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryTextBrush}" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Details}" Foreground="{DynamicResource AccentBrush}" FontSize="11"
+                           Margin="0,4,0,4" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Preview}" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="12"
+                           TextWrapping="Wrap" MaxHeight="68" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300" MinWidth="240" MaxWidth="420" />
+            <ColumnDefinition Width="5" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== Sidebar ===== -->
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="12,12,12,7">
+                    <StackPanel Margin="6,2,0,12">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Pi Harbor" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding AppVersionText}" FontSize="11" Margin="8,5,0,0"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                        </StackPanel>
+                        <TextBlock Text="Pi Session Desk (Avalonia)" FontSize="11" Margin="0,2,0,0"
+                                   Foreground="{DynamicResource MutedTextBrush}" />
+                    </StackPanel>
+                    <Button Classes="flat" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="＋" FontSize="18" Width="27" />
+                            <TextBlock Text="新对话" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="flat" Click="OnNewDefaultSessionClick" IsEnabled="{Binding CanSwitchSession}"
+                            ToolTip.Tip="{Binding DefaultWorkingDirectory}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⊕" FontSize="17" Width="27" />
+                            <TextBlock Text="默认目录新对话" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="flat" Command="{Binding RefreshCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="↻" FontSize="17" Width="27" />
+                            <TextBlock Text="刷新会话" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Grid Margin="4,10,4,5">
+                        <TextBox x:Name="GlobalSearchBox" Classes="harbor" Text="{Binding SearchText, Mode=TwoWay}"
+                                 MaxLength="256" Padding="9,8,28,8" PlaceholderText="搜索全部对话…"
+                                 KeyDown="OnGlobalSearchKeyDown" />
+                        <Button Content="×" Click="OnClearSearchClick" Width="26" HorizontalAlignment="Right"
+                                Classes="flat" Padding="0" ToolTip.Tip="清空搜索（Esc）"
+                                IsVisible="{Binding IsSearchActive}" />
+                    </Grid>
+                    <TextBlock Text="{Binding SearchStatus}" Foreground="{DynamicResource SecondaryTextBrush}"
+                               TextWrapping="Wrap" FontSize="12" Margin="6,3,6,5"
+                               IsVisible="{Binding IsSearchActive}" />
+                </StackPanel>
+
+                <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="0,1,0,0" Padding="16,10">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="ProcessingSpinner" Text="⣾" FontSize="13" Margin="0,1,6,0"
+                                       Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding IsStreaming}" />
+                            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource SecondaryTextBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding BackgroundActivityText}" Foreground="{DynamicResource UnreadBrush}"
+                                   FontSize="11" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding BackgroundActivityText, Converter={StaticResource StringNotEmptyToBool}}" />
+                        <TextBlock Text="{Binding ModelText}" Foreground="{DynamicResource MutedTextBrush}"
+                                   FontSize="12" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+
+                <Grid>
+                    <TreeView x:Name="SessionTree" ItemsSource="{Binding SidebarGroups}"
+                              Background="Transparent" BorderThickness="0" Padding="8,0,8,8"
+                              Foreground="{DynamicResource PrimaryTextBrush}"
+                              SelectionChanged="OnSessionSelected"
+                              ItemTemplate="{StaticResource SidebarTemplateSelector}"
+                              IsVisible="{Binding !IsSearchActive}">
+                        <TreeView.ItemContainerTheme>
+                            <ControlTheme TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <Setter Property="Padding" Value="4,1" />
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="Template">
+                                    <ControlTemplate>
+                                        <StackPanel>
+                                            <Border x:Name="HeaderBorder" CornerRadius="6" Padding="4,1"
+                                                    BorderBrush="Transparent" BorderThickness="3,0,0,0"
+                                                    Background="Transparent">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="18" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <ToggleButton x:Name="Expander" Focusable="False"
+                                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                                                  Classes="flat" Padding="0">
+                                                        <Panel>
+                                                            <TextBlock Text="›" FontSize="17"
+                                                                       IsVisible="{Binding !IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                                            <TextBlock Text="⌄" FontSize="17"
+                                                                       IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                                        </Panel>
+                                                    </ToggleButton>
+                                                    <ContentPresenter Grid.Column="1" Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
+                                                </Grid>
+                                            </Border>
+                                            <ItemsPresenter x:Name="ItemsHost" Margin="18,0,0,0"
+                                                            IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                        </StackPanel>
+                                    </ControlTemplate>
+                                </Setter>
+                            </ControlTheme>
+                        </TreeView.ItemContainerTheme>
+                    </TreeView>
+                    <ListBox x:Name="GlobalSearchResults" ItemsSource="{Binding SearchResults}"
+                             SelectionChanged="OnSearchResultSelected" Background="Transparent" BorderThickness="0"
+                             Padding="10,0,10,8" IsVisible="{Binding IsSearchActive}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="5,6">
+                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryTextBrush}"
+                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Details}" Foreground="{DynamicResource AccentBrush}"
+                                               FontSize="11" Margin="0,4,0,4" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Preview}" Foreground="{DynamicResource SecondaryTextBrush}"
+                                               FontSize="12" TextWrapping="Wrap" MaxHeight="68"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
+
+        <!-- ===== Chat surface ===== -->
+        <Grid Grid.Column="2" Background="{DynamicResource WindowBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="72" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding CurrentTitle}" FontSize="16" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding CurrentCwd}" Foreground="{DynamicResource SecondaryTextBrush}"
+                                   FontSize="12" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Button Classes="flat" Content="重载" Command="{Binding ReloadCommand}" Margin="0,0,8,0" />
+                        <Button Classes="flat" Content="导出" Click="OnExportConversationClick" Margin="0,0,8,0" />
+                        <Button Classes="flat" Content="查找" Click="OnFindBarOpenClick" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding TotalTokensText}" Foreground="{DynamicResource SecondaryTextBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,14,0" FontSize="12" />
+                        <ComboBox x:Name="ModelSelector" Width="280" MaxDropDownHeight="420"
+                                  ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel, Mode=TwoWay}"
+                                  IsEnabled="{Binding CanChangeModel}" SelectionChanged="OnModelSelectionChanged">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="{Binding MessageCountText}" Margin="14,0,0,0"
+                                   Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Conversation tab strip -->
+            <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,5"
+                    IsVisible="{Binding HasOpenConversations}">
+                <ItemsControl x:Name="ConversationTabs" ItemsSource="{Binding OpenConversations}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="TabBorder" CornerRadius="6" Padding="9,4" Margin="0,0,5,0"
+                                    Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" Cursor="Hand" PointerReleased="OnConversationTabClick"
+                                    Classes.active="{Binding IsActive}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="● " Foreground="{DynamicResource UnreadBrush}" FontSize="11"
+                                               VerticalAlignment="Center" IsVisible="{Binding HasUnread}" />
+                                    <TextBlock Text="◌ " Foreground="{DynamicResource AccentBrush}" FontSize="11"
+                                               VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+                                    <TextBlock Text="{Binding Title}" MaxWidth="180" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding PendingCountText}" Foreground="{DynamicResource AccentBrush}"
+                                               FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"
+                                               IsVisible="{Binding PendingCountText, Converter={StaticResource StringNotEmptyToBool}}" />
+                                    <Button Content="×" Classes="flat" Padding="5,0" Margin="7,0,0,0" FontSize="12"
+                                            Tag="{Binding}" Click="OnCloseConversationClick" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- Find bar -->
+            <Grid Grid.Row="2">
+                <Border x:Name="FindPanel" IsVisible="False" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="0,0,0,1" Background="{DynamicResource SidebarBrush}" Padding="14,7">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox x:Name="FindBox" Classes="harbor" Width="280" Padding="7,5"
+                                 TextChanged="OnFindTextChanged" KeyDown="OnFindBoxKeyDown" PlaceholderText="查找…" />
+                        <TextBlock x:Name="FindCountText" Margin="12,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SecondaryTextBrush}" FontSize="12" Text="" />
+                        <Button Classes="flat" Content="↑ 上一个" Padding="7,3" Click="OnFindPreviousClick" />
+                        <Button Classes="flat" Content="↓ 下一个" Padding="7,3" Margin="5,0,0,0" Click="OnFindNextClick" />
+                        <Button Classes="flat" Content="×" Padding="8,3" Margin="5,0,0,0" Click="OnFindBarCloseClick" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Messages -->
+            <Grid Grid.Row="3">
+                <TextBlock Text="{Binding EmptyConversationText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{DynamicResource MutedTextBrush}" FontSize="15"
+                           IsVisible="{Binding HasNoMessages}" />
+                <ListBox x:Name="MessageList" ItemsSource="{Binding DisplayMessages}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <p:MessageTemplateSelector />
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerTheme>
+                        <ControlTheme TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Template">
+                                <ControlTemplate>
+                                    <ContentPresenter Content="{TemplateBinding Content}"
+                                                      ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                </ControlTemplate>
+                            </Setter>
+                        </ControlTheme>
+                    </ListBox.ItemContainerTheme>
+                </ListBox>
+
+                <Border Background="#CC171717" IsVisible="{Binding IsLoadingHistory}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="正在读取会话…" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="大会话会按需渲染，请稍候" Margin="0,7,0,0"
+                                   Foreground="{DynamicResource SecondaryTextBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Button x:Name="ReturnToLatestButton" Content="↓  回到最新" Classes="accent"
+                        Click="OnReturnToLatestClick" IsVisible="False"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,22,18" />
+            </Grid>
+
+            <!-- Composer -->
+            <Border Grid.Row="4" Margin="18,10,18,18" Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,8">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Attachments}" IsEnabled="{Binding CanEditComposer}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="5"
+                                        Margin="0,0,8,8" Padding="4">
+                                    <StackPanel Width="115">
+                                        <Button Classes="flat" Padding="0" Tag="{Binding}" Click="OnPreviewImageClick">
+                                            <Image Source="{Binding Data, Converter={StaticResource BytesToBitmap}}"
+                                                   Width="110" Height="64" Stretch="Uniform" />
+                                        </Button>
+                                        <DockPanel Margin="0,3,0,0">
+                                            <Button DockPanel.Dock="Right" Content="×" Classes="flat" Padding="5,0"
+                                                    Tag="{Binding}" Click="OnRemoveImageClick" />
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource SecondaryTextBrush}"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="11" />
+                                        </DockPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="PromptBox" Text="{Binding InputText, Mode=TwoWay}" PlaceholderText="输入消息，@ 引用文件，/ 选择命令或 skill"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" MaxHeight="170"
+                                 Background="Transparent"
+                                 Foreground="{DynamicResource PrimaryTextBrush}" BorderThickness="0" Padding="3,5"
+                                 FontSize="14" KeyDown="OnPromptBoxKeyDown" />
+                        <Button Grid.Column="1" Classes="flat" Content="停止" Command="{Binding StopCommand}" Margin="6,1"
+                                VerticalAlignment="Bottom" IsVisible="{Binding IsStreaming}" />
+                        <Button Grid.Column="2" Classes="flat" Content="发送" Background="{DynamicResource AccentBrush}"
+                                Command="{Binding SendCommand}" Margin="3,1" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <DockPanel Margin="0,6,0,0">
+                        <Button DockPanel.Dock="Left" Classes="flat" Content="重新连接" Command="{Binding ReconnectCommand}"
+                                IsVisible="{Binding CanReconnect}" Padding="5,2" Margin="0,0,8,0" />
+                        <Button DockPanel.Dock="Left" Classes="flat" Content="＋ 图片" Click="OnAttachImageClick"
+                                IsEnabled="{Binding CanEditComposer}" Padding="5,2" />
+                        <TextBlock Text="Enter 换行 · Ctrl+Enter 发送 · Ctrl+V 粘贴图片" Foreground="{DynamicResource MutedTextBrush}"
+                                   FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

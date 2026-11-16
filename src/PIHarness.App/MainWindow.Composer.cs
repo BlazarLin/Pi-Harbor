@@ -161,7 +161,7 @@ public partial class MainWindow
             {
                 args.CancelCommand();
                 if (args.DataObject.GetData(DataFormats.Bitmap) is System.Windows.Media.Imaging.BitmapSource bitmap)
-                    _viewModel.AddAttachment(ImageAttachmentViewModel.FromBitmap(bitmap, $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
+                    _viewModel.AddAttachment(ImageConversion.FromBitmap(bitmap, $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
                 else _viewModel.ReportRecoverableError("剪贴板图片无法读取，请保存后使用“＋ 图片”添加。");
             }
             else if (args.DataObject.GetDataPresent(DataFormats.FileDrop))
@@ -207,7 +207,7 @@ public partial class MainWindow
                 _viewModel.ReportRecoverableError("剪贴板图片无法读取，请重新截图后再粘贴。");
                 return true;
             }
-            _viewModel.AddAttachment(ImageAttachmentViewModel.FromBitmap(bitmap, $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
+            _viewModel.AddAttachment(ImageConversion.FromBitmap(bitmap, $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
             return true;
         }
         catch (Exception exception) when (IsImageError(exception))
@@ -220,7 +220,7 @@ public partial class MainWindow
     private void AddPngStream(Stream pngStream)
     {
         var decoder = BitmapDecoder.Create(pngStream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
-        _viewModel.AddAttachment(ImageAttachmentViewModel.FromBitmap(decoder.Frames[0], $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
+        _viewModel.AddAttachment(ImageConversion.FromBitmap(decoder.Frames[0], $"粘贴图片 {_viewModel.Attachments.Count + 1}.png"));
     }
 
     private static bool IsImageFilePath(string path) => Path.GetExtension(path) is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff";
@@ -241,7 +241,7 @@ public partial class MainWindow
                 _viewModel.ReportRecoverableError("每条消息最多添加 4 张图片。");
                 break;
             }
-            try { _viewModel.AddAttachment(ImageAttachmentViewModel.FromFile(path)); }
+            try { _viewModel.AddAttachment(ImageConversion.FromImageFile(path)); }
             catch (Exception exception) when (IsImageError(exception))
             { _viewModel.ReportRecoverableError($"无法添加 {Path.GetFileName(path)}：{exception.Message}"); }
         }

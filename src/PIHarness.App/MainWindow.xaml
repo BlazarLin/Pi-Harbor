@@ -4,7 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="clr-namespace:PIHarness.App.ViewModels"
+        xmlns:vm="clr-namespace:PIHarness.App.ViewModels;assembly=PIHarness.ViewModels"
         xmlns:p="clr-namespace:PIHarness.App.Presentation"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
@@ -115,7 +115,7 @@
                                 <DataTemplate>
                                     <Button Click="OnPreviewImageClick" Tag="{Binding}" ToolTip="{Binding Detail}"
                                             Style="{StaticResource FlatButtonStyle}" Margin="0,8,8,0" Padding="3">
-                                        <Image Source="{Binding Preview}" Width="120" Height="80" Stretch="Uniform" />
+                                        <Image Source="{Binding Data, Converter={StaticResource BytesToImageSourceConverter}}" Width="120" Height="80" Stretch="Uniform" />
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -144,7 +144,7 @@
                             <DataTemplate>
                                 <Button Click="OnPreviewImageClick" Tag="{Binding}" ToolTip="{Binding Detail}"
                                         Style="{StaticResource FlatButtonStyle}" Margin="0,8,8,0" Padding="3">
-                                    <Image Source="{Binding Preview}" Width="120" Height="80" Stretch="Uniform" />
+                                    <Image Source="{Binding Data, Converter={StaticResource BytesToImageSourceConverter}}" Width="120" Height="80" Stretch="Uniform" />
                                 </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -784,7 +784,7 @@
                                 <StackPanel Width="115">
                                     <Button Click="OnPreviewImageClick" Tag="{Binding}" ToolTip="{Binding Detail}"
                                             Style="{StaticResource FlatButtonStyle}" Padding="0">
-                                        <Image Source="{Binding Preview}" Width="110" Height="64" Stretch="Uniform" />
+                                        <Image Source="{Binding Data, Converter={StaticResource BytesToImageSourceConverter}}" Width="110" Height="64" Stretch="Uniform" />
                                     </Button>
                                     <DockPanel Margin="0,3,0,0">
                                         <Button DockPanel.Dock="Right" Content="×" Click="OnRemoveImageClick" Tag="{Binding}"
