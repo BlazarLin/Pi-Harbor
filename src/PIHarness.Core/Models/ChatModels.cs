@@ -12,6 +12,8 @@ public enum ChatItemKind
     Metrics,
     System,
     Error,
+    /// <summary>A message typed while pi is still streaming; sent automatically when the turn settles.</summary>
+    Queued,
     ActivityGroup,
 }
 

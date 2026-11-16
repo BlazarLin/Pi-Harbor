@@ -1,0 +1,31 @@
+<!-- Created: 2026-09-08; Purpose: Edit shell preferences: tray, notifications, hotkey and idle recycling. -->
+<Window x:Class="PIHarness.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pi Harbor 设置"
+        Width="480" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="{StaticResource WindowBrush}"
+        Foreground="{StaticResource PrimaryTextBrush}"
+        FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="13">
+    <StackPanel Margin="22,18">
+        <TextBlock Text="行为偏好" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" />
+        <CheckBox x:Name="CloseToTrayCheck" Content="关闭窗口时最小化到系统托盘（托盘菜单可退出）" Margin="0,4" />
+        <CheckBox x:Name="ToastCheck" Content="后台会话完成或失败时发送 Windows 系统通知" Margin="0,4" />
+        <CheckBox x:Name="FlashCheck" Content="后台会话完成或失败时闪烁任务栏图标" Margin="0,4" />
+        <CheckBox x:Name="HotkeyCheck" Content="全局热键 Ctrl+Alt+P 呼出 / 隐藏主窗口" Margin="0,4" />
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="后台会话空闲自动回收（分钟，0 表示不回收）：" VerticalAlignment="Center" />
+            <TextBox x:Name="IdleRecycleBox" Width="64" Padding="5,4" Background="{StaticResource PanelBrush}"
+                     Foreground="{StaticResource PrimaryTextBrush}" CaretBrush="{StaticResource AccentBrush}"
+                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+        </StackPanel>
+        <TextBlock Text="回收仅针对未读且空闲的后台会话；重新打开时会话历史会从本地文件重新加载。"
+                   FontSize="11" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="取消" Style="{StaticResource FlatButtonStyle}" Padding="14,7" Click="OnCancelClick" />
+            <Button Content="保存" Style="{StaticResource AccentButtonStyle}" Padding="14,7" Margin="10,0,0,0" Click="OnSaveClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

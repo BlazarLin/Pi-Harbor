@@ -13,7 +13,11 @@ public partial class MainWindow
 {
     private async void OnWorkspacePreviewKeyDown(object sender, KeyEventArgs args)
     {
-        if (args.Key == Key.F && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        if (args.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            OpenFindBar(); args.Handled = true;
+        }
+        else if (args.Key == Key.F && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             GlobalSearchBox.Focus(); GlobalSearchBox.SelectAll(); args.Handled = true;
         }

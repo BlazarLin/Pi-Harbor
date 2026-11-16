@@ -89,11 +89,48 @@
             </Setter>
         </Style>
 
+        <ContextMenu x:Key="MessageContextMenu">
+            <MenuItem Header="复制全文" Tag="{Binding}" Click="OnCopyMessageClick" />
+            <MenuItem Header="引用到输入框" Tag="{Binding}" Click="OnQuoteMessageClick" />
+        </ContextMenu>
+
+        <DataTemplate x:Key="QueuedMessageTemplate">
+            <Grid Margin="70,4,18,4">
+                <Border MaxWidth="760" HorizontalAlignment="Right" Background="Transparent"
+                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="9" Padding="14,8">
+                    <Border.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="复制全文" Tag="{Binding}" Click="OnCopyMessageClick" />
+                            <MenuItem Header="引用到输入框" Tag="{Binding}" Click="OnQuoteMessageClick" />
+                            <MenuItem Header="撤回这条排队消息" Tag="{Binding}" Click="OnRevokeQueuedClick" />
+                        </ContextMenu>
+                    </Border.ContextMenu>
+                    <StackPanel>
+                        <TextBlock Text="⏳ 排队中 · 当前回答结束后自动发送（右键可撤回）" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="0,0,0,4" />
+                        <p:MarkdownTextBlock Markdown="{Binding Text}" IsStreaming="{Binding IsStreaming}"
+                                             Foreground="{StaticResource PrimaryTextBrush}" FontSize="14" />
+                        <ItemsControl ItemsSource="{Binding Images}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Click="OnPreviewImageClick" Tag="{Binding}" ToolTip="{Binding Detail}"
+                                            Style="{StaticResource FlatButtonStyle}" Margin="0,8,8,0" Padding="3">
+                                        <Image Source="{Binding Preview}" Width="120" Height="80" Stretch="Uniform" />
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
         <DataTemplate x:Key="UserMessageTemplate">
             <Grid Margin="70,8,18,8">
                 <Border MaxWidth="760" HorizontalAlignment="Right"
                         Background="{StaticResource UserBubbleBrush}"
-                        CornerRadius="9" Padding="14,10">
+                        CornerRadius="9" Padding="14,10"
+                        ContextMenu="{StaticResource MessageContextMenu}">
                     <Border.Style><Style TargetType="Border">
                         <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                     </Style></Border.Style>
@@ -119,7 +156,8 @@
 
         <DataTemplate x:Key="AssistantMessageTemplate">
             <Grid Margin="18,8,70,8">
-                <Border MaxWidth="880" HorizontalAlignment="Left" Background="Transparent" CornerRadius="6" Padding="2">
+                <Border MaxWidth="880" HorizontalAlignment="Left" Background="Transparent" CornerRadius="6" Padding="2"
+                        ContextMenu="{StaticResource MessageContextMenu}">
                     <Border.Style><Style TargetType="Border">
                         <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                     </Style></Border.Style>
@@ -163,7 +201,8 @@
 
         <DataTemplate x:Key="SystemMessageTemplate">
             <Border Margin="18,5,70,5" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="10,7">
+                    BorderThickness="1" CornerRadius="6" Padding="10,7"
+                    ContextMenu="{StaticResource MessageContextMenu}">
                 <Border.Style><Style TargetType="Border">
                     <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" /><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                 </Style></Border.Style>
@@ -181,7 +220,8 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ErrorMessageTemplate">
-            <Border Margin="18,6,70,6" Background="#392525" CornerRadius="6" Padding="11,8">
+            <Border Margin="18,6,70,6" Background="#392525" CornerRadius="6" Padding="11,8"
+                    ContextMenu="{StaticResource MessageContextMenu}">
                 <Border.Style><Style TargetType="Border">
                     <Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{StaticResource HighlightBrush}" /></DataTrigger></Style.Triggers>
                 </Style></Border.Style>
@@ -333,7 +373,7 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="300" MinWidth="240" MaxWidth="420" />
+            <ColumnDefinition x:Name="SidebarColumn" Width="300" MinWidth="240" MaxWidth="420" />
             <ColumnDefinition Width="5" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
@@ -351,6 +391,7 @@
                                    Foreground="{StaticResource MutedTextBrush}" />
                     </StackPanel>
                     <Button Content="◫  Overview" Style="{StaticResource FlatButtonStyle}" Click="OnOverviewClick" ToolTip="本机会话用量与最近工作" />
+                    <Button Content="⚙  设置" Style="{StaticResource FlatButtonStyle}" Click="OnSettingsClick" ToolTip="通知、托盘、空闲回收与窗口偏好" />
                     <Button x:Name="NewSessionButton" Style="{StaticResource FlatButtonStyle}" Click="OnNewSessionClick" IsEnabled="{Binding CanSwitchSession}" ToolTip="{Binding DefaultWorkingDirectory}">
                         <Button.ContextMenu><ContextMenu>
                             <MenuItem Header="使用默认目录新建" Click="OnNewDefaultSessionClick" ToolTip="{Binding DefaultWorkingDirectory}" />
@@ -499,6 +540,8 @@
         <Grid Grid.Column="2" Background="{StaticResource WindowBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="72" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -516,6 +559,10 @@
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                         <Button Content="重载" Command="{Binding ReloadCommand}" Style="{StaticResource FlatButtonStyle}" Margin="0,0,8,0" ToolTip="重载当前会话的模型配置、提示词和 skills；处理中不可用。也可输入 /reload。" />
+                        <Button Content="导出" Click="OnExportConversationClick" Style="{StaticResource FlatButtonStyle}" Margin="0,0,8,0"
+                                ToolTip="把当前会话导出为 Markdown 文件" />
+                        <Button Content="查找" Click="OnFindBarOpenClick" Style="{StaticResource FlatButtonStyle}" Margin="0,0,8,0"
+                                ToolTip="会话内查找（Ctrl+F）" />
                         <TextBlock Text="{Binding TotalTokensText}" Foreground="{StaticResource SecondaryTextBrush}"
                                    VerticalAlignment="Center" Margin="0,0,14,0" FontSize="12"
                                    ToolTip="本会话累计消耗 Token（含本地历史与本次运行内完成的轮次）" />
@@ -566,7 +613,58 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="1">
+            <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+                    Padding="12,5" Visibility="{Binding HasOpenConversations, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <ItemsControl x:Name="ConversationTabs" ItemsSource="{Binding OpenConversations}">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ConversationViewModel}">
+                            <Border x:Name="TabBorder" CornerRadius="6" Padding="9,4" Margin="0,0,5,0"
+                                    Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                    Cursor="Hand" MouseLeftButtonDown="OnConversationTabClick" ToolTip="{Binding Cwd}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="● " Foreground="{StaticResource UnreadBrush}" FontSize="11" VerticalAlignment="Center"
+                                               Visibility="{Binding HasUnread, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <TextBlock Text="◌ " Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"
+                                               Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <TextBlock Text="{Binding Title}" MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Text="  排队 1" Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"
+                                               Visibility="{Binding PendingCountText, Converter={StaticResource PendingCountConverter}}" />
+                                    <Button Content="×" Click="OnCloseConversationClick" Tag="{Binding}"
+                                            Style="{StaticResource FlatButtonStyle}" Padding="5,0" Margin="7,0,0,0" FontSize="12"
+                                            ToolTip="关闭这个会话标签页（处理中不可关闭）" />
+                                </StackPanel>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                    <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource CurrentSessionBrush}" />
+                                    <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <Grid Grid.Row="2">
+                <Border x:Name="FindPanel" Visibility="Collapsed" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+                        Background="{StaticResource SidebarBrush}" Padding="14,7">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox x:Name="FindBox" Width="280" Padding="7,5" Background="{StaticResource PanelBrush}"
+                                 Foreground="{StaticResource PrimaryTextBrush}" CaretBrush="{StaticResource AccentBrush}"
+                                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                 TextChanged="OnFindTextChanged" KeyDown="OnFindBoxKeyDown"
+                                 AutomationProperties.Name="会话内查找" />
+                        <TextBlock x:Name="FindCountText" Margin="12,0" VerticalAlignment="Center"
+                                   Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Text="" />
+                        <Button Content="↑ 上一个" Style="{StaticResource FlatButtonStyle}" Padding="7,3" Click="OnFindPreviousClick" />
+                        <Button Content="↓ 下一个" Style="{StaticResource FlatButtonStyle}" Padding="7,3" Margin="5,0,0,0" Click="OnFindNextClick" />
+                        <Button Content="×" Style="{StaticResource FlatButtonStyle}" Padding="8,3" Margin="5,0,0,0" Click="OnFindBarCloseClick" ToolTip="关闭查找（Esc）" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="3">
                 <TextBlock Text="{Binding EmptyConversationText}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedTextBrush}" FontSize="15">
@@ -632,7 +730,7 @@
                         Cursor="Hand" />
             </Grid>
 
-            <Border x:Name="ComposerBorder" Grid.Row="2" Margin="18,10,18,18" Background="{StaticResource PanelBrush}"
+            <Border x:Name="ComposerBorder" Grid.Row="4" Margin="18,10,18,18" Background="{StaticResource PanelBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,8">
                 <StackPanel>
                     <Border x:Name="CompletionPanel" Visibility="Collapsed" BorderBrush="{StaticResource BorderBrush}"

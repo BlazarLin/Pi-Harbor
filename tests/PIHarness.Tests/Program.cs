@@ -296,6 +296,11 @@ internal static class Program
                 var promptMessage = root.TryGetProperty("message", out var promptElement)
                     ? promptElement.GetString()
                     : null;
+                // Streaming window for steering tests: the turn stays in flight for the requested time.
+                if (int.TryParse(Environment.GetEnvironmentVariable("PI_HARNESS_FAKE_PROMPT_DELAY_MS"), out var nPromptDelayMs) && nPromptDelayMs > 0)
+                {
+                    await Task.Delay(nPromptDelayMs).ConfigureAwait(false);
+                }
                 if (promptMessage == "触发模型错误")
                 {
                     WriteFakeEvent(new { type = "agent_start" });

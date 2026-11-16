@@ -36,6 +36,9 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
     private TokenUsage _totalUsage;
     private bool _isSending;
     private bool _hasUnread;
+    private bool _isActive;
+    private DateTimeOffset _lastActivityAt = DateTimeOffset.Now;
+    private readonly List<(ChatItemViewModel Item, string Text, ImageAttachmentViewModel[] Images)> _pendingQueue = [];
     private bool _needsGeneratedTitle;
 
     public ConversationViewModel(string key, Func<PiRpcClient> rpcClientFactory, SynchronizationContext? uiContext, string title = "选择一个会话")
@@ -161,7 +164,13 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         }
     }
 
-    public bool CanSend => !_isSending && State == ChatSessionState.Ready && (!string.IsNullOrWhiteSpace(InputText) || Attachments.Count > 0);
+    public bool CanSend =>
+        !_isSending &&
+        (!string.IsNullOrWhiteSpace(InputText) || Attachments.Count > 0) &&
+        (State == ChatSessionState.Ready || (State == ChatSessionState.Streaming && CanEditComposer));
+
+    /// <summary>Messages typed while the turn is streaming; they are sent automatically once it settles.</summary>
+    public IReadOnlyList<ChatItemViewModel> PendingMessages => _pendingQueue.Select(entry => entry.Item).ToArray();
     public bool CanSwitchSession => !_isSending;
     public bool CanChangeModel => !_isSending && State == ChatSessionState.Ready && Models.Count > 0;
     public bool IsStreaming => State is ChatSessionState.Streaming or ChatSessionState.Stopping;
@@ -197,6 +206,63 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         set => SetProperty(ref _hasUnread, value);
     }
 
+    /// <summary>Whether this conversation is shown in the main chat surface (tab highlight).</summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set => SetProperty(ref _isActive, value);
+    }
+
+    /// <summary>Last local interaction (send, queued message or pi event); drives idle recycling.</summary>
+    public DateTimeOffset LastActivityAt => _lastActivityAt;
+
+    private void TouchActivity() => _lastActivityAt = DateTimeOffset.Now;
+
+    internal void SetLastActivityForTest(DateTimeOffset time) => _lastActivityAt = time;
+
+    /// <summary>Render the whole conversation (active branch in memory) as a portable Markdown document.</summary>
+    public string ExportMarkdown()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"# {Title}");
+        builder.AppendLine();
+        if (!string.IsNullOrWhiteSpace(Cwd))
+        {
+            builder.AppendLine($"> 项目目录：`{Cwd}`");
+            builder.AppendLine();
+        }
+
+        foreach (var item in Messages)
+        {
+            switch (item.Kind)
+            {
+                case ChatItemKind.User:
+                    builder.AppendLine("### 🧑 用户").AppendLine().AppendLine(item.Text).AppendLine();
+                    break;
+                case ChatItemKind.Assistant:
+                    builder.AppendLine("### 🤖 助手").AppendLine().AppendLine(item.Text).AppendLine();
+                    break;
+                case ChatItemKind.Thinking:
+                    builder.AppendLine("<details><summary>思考过程</summary>").AppendLine().AppendLine(item.Text)
+                        .AppendLine().AppendLine("</details>").AppendLine();
+                    break;
+                case ChatItemKind.Tool:
+                    builder.AppendLine($"<details><summary>{item.Title}</summary>").AppendLine()
+                        .AppendLine("```text").AppendLine(item.Text).AppendLine("```")
+                        .AppendLine().AppendLine("</details>").AppendLine();
+                    break;
+                case ChatItemKind.Metrics:
+                    builder.AppendLine($"*{item.Text}*").AppendLine();
+                    break;
+                case ChatItemKind.Error:
+                    builder.AppendLine($"**⚠ 错误**：{item.Text}").AppendLine();
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
+
     public bool IsLoadingHistory
     {
         get => _isLoadingHistory;
@@ -215,6 +281,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         await RunOnUiAsync(() =>
         {
             State = ChatSessionState.Starting;
+            ClearPendingQueue();
             Messages.Clear();
             Title = "新对话";
             _needsGeneratedTitle = true;
@@ -241,6 +308,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         await RunOnUiAsync(() =>
         {
             State = ChatSessionState.Starting;
+            ClearPendingQueue();
             Messages.Clear();
             SessionPath = Path.GetFullPath(session.SessionPath);
             Title = session.Title;
@@ -259,6 +327,13 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
     public async Task SendAsync()
     {
         ThrowIfDisposed();
+        // Steering: a message typed while the turn is streaming is queued and sent when it settles.
+        if (State == ChatSessionState.Streaming)
+        {
+            await EnqueuePendingAsync();
+            return;
+        }
+
         var client = _rpcClient;
         if (!CanSend || client is null)
         {
@@ -274,6 +349,87 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         }
         var images = Attachments.ToArray();
         if (message.Length == 0) message = "请分析这些图片。";
+        await DispatchPromptAsync(client, message, images).ConfigureAwait(false);
+    }
+
+    private Task EnqueuePendingAsync()
+    {
+        var message = ExpandFileReferences(InputText).Trim();
+        var images = Attachments.ToArray();
+        if (message.Length == 0) message = "请分析这些图片。";
+        var queuedItem = new ChatItemViewModel(ChatItemKind.Queued, message) { Images = images };
+        _pendingQueue.Add((queuedItem, message, images));
+        TouchActivity();
+        return RunOnUiAsync(() =>
+        {
+            Messages.Add(queuedItem);
+            InputText = string.Empty;
+            Attachments.Clear();
+            FileReferences.Clear();
+            OnPropertyChanged(nameof(PendingCountText));
+            StatusText = $"已排队 {_pendingQueue.Count} 条，当前回答结束后自动发送";
+        });
+    }
+
+    public string PendingCountText => _pendingQueue.Count == 0 ? string.Empty : $"排队 {_pendingQueue.Count}";
+
+    /// <summary>User withdrew a queued message before it was sent.</summary>
+    public void RevokeQueued(ChatItemViewModel item)
+    {
+        var index = _pendingQueue.FindIndex(entry => ReferenceEquals(entry.Item, item));
+        if (index < 0)
+        {
+            return;
+        }
+
+        _pendingQueue.RemoveAt(index);
+        Messages.Remove(item);
+        OnPropertyChanged(nameof(PendingCountText));
+        StatusText = _pendingQueue.Count == 0 ? "已撤回排队消息" : $"已撤回；剩余排队 {_pendingQueue.Count} 条";
+    }
+
+    private async Task DrainPendingQueueAsync()
+    {
+        if (_pendingQueue.Count == 0 || State != ChatSessionState.Ready || _disposed)
+        {
+            return;
+        }
+
+        var (queuedItem, message, images) = _pendingQueue[0];
+        _pendingQueue.RemoveAt(0);
+        var client = _rpcClient;
+        if (client is null)
+        {
+            return;
+        }
+
+        await RunOnUiAsync(() =>
+        {
+            Messages.Remove(queuedItem);
+            OnPropertyChanged(nameof(PendingCountText));
+        }).ConfigureAwait(false);
+        await DispatchPromptAsync(client, message, images).ConfigureAwait(false);
+    }
+
+    /// <summary>Remove queued-but-unsent messages (stop, reload or process exit invalidates them).</summary>
+    private void ClearPendingQueue()
+    {
+        if (_pendingQueue.Count == 0)
+        {
+            return;
+        }
+
+        var items = _pendingQueue.Select(entry => entry.Item).ToArray();
+        _pendingQueue.Clear();
+        OnPropertyChanged(nameof(PendingCountText));
+        foreach (var item in items)
+        {
+            Messages.Remove(item);
+        }
+    }
+
+    private async Task DispatchPromptAsync(PiRpcClient client, string message, ImageAttachmentViewModel[] images)
+    {
         var sentItem = new ChatItemViewModel(ChatItemKind.User, message) { Images = images };
         await RunOnUiAsync(() =>
         {
@@ -289,6 +445,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
             _activeTurnUsage = default;
             _hasActiveTurn = true;
             _turnTimer.Restart();
+            TouchActivity();
             State = ChatSessionState.Streaming;
         }).ConfigureAwait(false);
 
@@ -358,7 +515,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
             return;
         }
 
-        await RunOnUiAsync(() => State = ChatSessionState.Stopping).ConfigureAwait(false);
+        // Revoke queued steering messages first: the abort may settle the current turn,
+        // which would otherwise auto-dispatch them.
+        await RunOnUiAsync(() =>
+        {
+            ClearPendingQueue();
+            State = ChatSessionState.Stopping;
+            StatusText = "已停止生成，排队的消息已撤回。";
+        }).ConfigureAwait(false);
         try
         {
             await _rpcClient.AbortAsync(CancellationToken.None).ConfigureAwait(false);
@@ -754,6 +918,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
                 CompleteStreamItems();
                 CompleteActiveTurn();
                 State = ChatSessionState.Ready;
+                _ = DrainPendingQueueAsync();
                 break;
             case "message_start":
                 if (rpcEvent.Payload.TryGetProperty("message", out var startMessage) && ReadString(startMessage, "role") == "assistant")
@@ -960,7 +1125,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         TotalUsage += _activeTurnUsage;
         _hasActiveTurn = false;
         _activityGroup?.CompleteActivity();
-        Attention?.Invoke(this, "settled");
+        // With queued steering messages the next turn starts immediately; only notify when truly done.
+        if (_pendingQueue.Count == 0)
+        {
+            Attention?.Invoke(this, "settled");
+        }
     }
 
     private void ResetActiveTurn()
@@ -980,6 +1149,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
         _ = RunOnUiAsync(() =>
         {
             if (_disposed || !ReferenceEquals(sender, _rpcClient)) return;
+            ClearPendingQueue();
             State = ChatSessionState.Faulted;
             StatusText = $"pi RPC 进程已退出，退出码：{exitCode}。";
             Messages.Add(new ChatItemViewModel(ChatItemKind.Error, StatusText));

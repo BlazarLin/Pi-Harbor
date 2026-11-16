@@ -28,7 +28,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public const string ProductName = "Pi Harbor";
     public const string ProductSubtitle = "Pi Session Desk";
     public static string ApplicationVersion =>
-        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.7.1";
+        typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.8.0";
     private readonly string _sessionRoot;
     private readonly Func<PiRpcClient> _rpcClientFactory;
     private readonly SessionCatalog _catalog;
@@ -60,7 +60,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         RefreshCommand = new AsyncRelayCommand(RefreshCatalogAsync, () => true);
         Active = CreateConversation("initial", "选择一个会话");
+        _homeConversation = Active;
+        Active.IsActive = true;
         _managementLoaded = Task.WhenAll(LoadManagementAsync(), LoadStarredSessionsAsync());
+        OpenConversations.CollectionChanged += (_, _) => NotifyOpenConversationsChanged();
+        StartRecycleTimer();
     }
 
     public ConversationViewModel Active { get; private set; }
@@ -178,6 +182,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var conversation = CreateConversation(key, "新对话");
         _conversations[key] = conversation;
+        OpenConversations.Add(conversation);
         Activate(conversation);
         await conversation.StartNewAsync(cwd).ConfigureAwait(false);
         UpdateTreeState();
@@ -204,6 +209,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var conversation = CreateConversation(key, session.Title);
         conversation.HasUnread = _unread.Contains(key);
         _conversations[key] = conversation;
+        OpenConversations.Add(conversation);
         Activate(conversation);
         await conversation.OpenAsync(session).ConfigureAwait(false);
         await RunOnUiAsync(() => { MarkActiveRead(); UpdateTreeState(); }).ConfigureAwait(false);
@@ -220,6 +226,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var previous = Active;
         Active = conversation;
+        previous.IsActive = false;
+        conversation.IsActive = true;
         // A draft typed before any session was chosen follows into the first opened conversation.
         if (previous.Key == "initial" && (!string.IsNullOrWhiteSpace(previous.InputText) || previous.Attachments.Count > 0))
         {
@@ -385,6 +393,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _shuttingDown = true;
+        _recycleTimer?.Dispose();
+        _recycleTimer = null;
         _overviewCancellation.Cancel();
         await _overviewTask.ConfigureAwait(false);
         await _managementLoaded.ConfigureAwait(false);
@@ -401,6 +411,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await conversation.DisposeAsync().ConfigureAwait(false);
         }
         _conversations.Clear();
+        // OpenConversations may be bound to the tab strip; clear it on the UI thread.
+        await RunOnUiAsync(() => OpenConversations.Clear()).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()

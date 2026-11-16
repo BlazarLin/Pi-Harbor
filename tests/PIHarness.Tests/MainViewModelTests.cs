@@ -206,19 +206,19 @@ internal static class MainViewModelTests
         string sessionRoot,
         out List<PiRpcClient> clients,
         string? commandLog = null,
-        int nStateDelayMs = 0, string? namesDirectory = null)
+        int nStateDelayMs = 0, string? namesDirectory = null, int nPromptDelayMs = 0)
     {
         clients = [];
         var capturedClients = clients;
         return new MainViewModel(sessionRoot, () =>
         {
-            var client = new PiRpcClient(options => CreateFakeStartInfo(options, commandLog, nStateDelayMs));
+            var client = new PiRpcClient(options => CreateFakeStartInfo(options, commandLog, nStateDelayMs, nPromptDelayMs));
             capturedClients.Add(client);
             return client;
         }, namesDirectory ?? Path.Combine(sessionRoot, ".harbor-test", "names"));
     }
 
-    private static ProcessStartInfo CreateFakeStartInfo(PiStartOptions options, string? commandLog, int nStateDelayMs)
+    private static ProcessStartInfo CreateFakeStartInfo(PiStartOptions options, string? commandLog, int nStateDelayMs, int nPromptDelayMs = 0)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -239,13 +239,17 @@ internal static class MainViewModelTests
         {
             startInfo.Environment["PI_HARNESS_FAKE_STATE_DELAY_MS"] = nStateDelayMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
+        if (nPromptDelayMs > 0)
+        {
+            startInfo.Environment["PI_HARNESS_FAKE_PROMPT_DELAY_MS"] = nPromptDelayMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         return startInfo;
     }
 
-    private static SessionSummary CreateSummary(string directory, string title, string? sessionPath = null) =>
+    internal static SessionSummary CreateSummary(string directory, string title, string? sessionPath = null) =>
         new(sessionPath ?? Path.Combine(directory, $"{Guid.NewGuid():N}.jsonl"), directory, title, DateTimeOffset.Now, DateTimeOffset.Now);
 
-    private static string WriteConversationSession(TemporaryDirectory directory, string fileName)
+    internal static string WriteConversationSession(TemporaryDirectory directory, string fileName)
     {
         return directory.WriteSession(
             fileName,

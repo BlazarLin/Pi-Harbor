@@ -2,10 +2,31 @@ using System.Text.Json;
 
 namespace PIHarness.Core.Sessions;
 
-public sealed record SessionManagementState(string[] Archived, string[] Unread, string? DefaultWorkingDirectory)
+public sealed record SessionManagementState(
+    string[] Archived,
+    string[] Unread,
+    string? DefaultWorkingDirectory,
+    ShellPreferences? Preferences = null)
 {
-    public static SessionManagementState Empty => new([], [], null);
+    public static SessionManagementState Empty => new([], [], null, null);
 }
+
+/// <summary>User shell preferences (tray, notifications, idle recycling, window layout).</summary>
+public sealed record ShellPreferences(
+    bool? CloseToTray = null,
+    bool? ToastNotifications = null,
+    bool? FlashWindow = null,
+    bool? GlobalHotkeyEnabled = null,
+    int? IdleRecycleMinutes = null,
+    WindowLayoutData? Window = null);
+
+public sealed record WindowLayoutData(
+    double Left,
+    double Top,
+    double Width,
+    double Height,
+    bool Maximized,
+    double SidebarWidth);
 
 /// <summary>Local UI metadata; never rewrites Pi's conversation files.</summary>
 public sealed class SessionManagementStore(string directory)

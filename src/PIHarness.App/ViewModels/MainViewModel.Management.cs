@@ -40,6 +40,8 @@ public sealed partial class MainViewModel
                 if (!string.IsNullOrWhiteSpace(state.DefaultWorkingDirectory) && Path.IsPathFullyQualified(state.DefaultWorkingDirectory))
                     _defaultWorkingDirectory = state.DefaultWorkingDirectory;
                 OnPropertyChanged(nameof(DefaultWorkingDirectory));
+                _preferences = state.Preferences;
+                NotifyPreferencesChanged();
                 RebuildProjects();
             }).ConfigureAwait(false);
         }
@@ -52,7 +54,7 @@ public sealed partial class MainViewModel
     // Capture on the UI thread, then serialize writes so an earlier save cannot overwrite a later one.
     private Task SaveManagementAsync()
     {
-        var state = new SessionManagementState(_archived.ToArray(), _unread.ToArray(), _defaultWorkingDirectory);
+        var state = new SessionManagementState(_archived.ToArray(), _unread.ToArray(), _defaultWorkingDirectory, _preferences);
         return _managementSaved = SaveAfterAsync(_managementSaved, state);
     }
 

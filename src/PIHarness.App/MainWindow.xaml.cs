@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
         InitializeComposer();
+        InitializeShell();
         _activityTimer.Tick += (_, _) => _viewModel.RefreshRelativeActivityTimes(DateTimeOffset.Now);
         _activityTimer.Start();
         AttachActiveMessages();
@@ -61,7 +62,11 @@ public partial class MainWindow : Window
         try { ToastNotificationManagerCompat.OnActivated += OnToastActivated; }
         catch (Exception error) when (error is InvalidOperationException or COMException or DllNotFoundException)
         { _viewModel.ReportRecoverableError("Windows 通知暂不可用，完成状态仍显示在侧栏。"); }
-        SourceInitialized += (_, _) => EnableDarkTitleBar();
+        SourceInitialized += (_, _) =>
+        {
+            EnableDarkTitleBar();
+            RegisterGlobalHotKey();
+        };
     }
 
     private void OnMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
@@ -73,10 +78,15 @@ public partial class MainWindow : Window
             CancelPendingAutoScroll();
             UpdateReturnToLatestVisibility();
             UpdateTaskbarOverlay();
+            CloseFindBar();
         }
         else if (args.PropertyName is nameof(MainViewModel.UnreadCount) or nameof(MainViewModel.BusyCount))
         {
             UpdateTaskbarOverlay();
+        }
+        else if (args.PropertyName is nameof(MainViewModel.GlobalHotkeyEnabled) or nameof(MainViewModel.ToastNotificationsEnabled))
+        {
+            ApplyGlobalHotKeyRegistration();
         }
     }
 
@@ -99,7 +109,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        FlashWindowForAttention();
+        if (_viewModel.FlashWindowEnabled)
+        {
+            FlashWindowForAttention();
+        }
+
         ShowCompletionToast(conversation, kind);
     }
 
@@ -107,6 +121,11 @@ public partial class MainWindow : Window
     {
         await _viewModel.InitializeAsync();
         _windowReady.TrySetResult();
+        if (!IsQaMode)
+        {
+            RestoreWindowLayout();
+            ApplyGlobalHotKeyRegistration();
+        }
         if (ReadCommandLineOption("--qa-notification-report") is { } notificationReport)
         {
             await VerifyNotificationAsync(notificationReport);
@@ -294,6 +313,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Close-to-tray: keep the app and its sessions alive in the notification area.
+        if (_viewModel.CloseToTrayEnabled && !_forceExit && !IsQaMode && !_shutdownStarted)
+        {
+            args.Cancel = true;
+            Hide();
+            return;
+        }
+
         args.Cancel = true;
         if (_shutdownStarted)
         {
@@ -303,6 +330,8 @@ public partial class MainWindow : Window
         _shutdownStarted = true;
         _activityTimer.Stop();
         _completionCts?.Cancel();
+        var layout = CaptureWindowLayout();
+        if (layout is not null) { try { await _viewModel.SaveWindowLayoutAsync(layout); } catch (ObjectDisposedException) { } }
         // Hide the intact dark surface before tearing down the renderer / RPC processes.
         Hide();
         if (ReadCommandLineOption("--qa-search-capture-dir") is { } closeQa)
@@ -551,6 +580,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs args)
     {
+        ReleaseShell();
         ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
         base.OnClosed(args);
     }
