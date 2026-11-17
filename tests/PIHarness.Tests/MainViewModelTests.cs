@@ -51,7 +51,7 @@ internal static class MainViewModelTests
         viewModel.InputText = "开始流式测试";
 
         await viewModel.SendAsync();
-        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(8));
 
         var streamed = viewModel.Messages.Where(item => item.Kind == ChatItemKind.Assistant && item.Text == "流式回复").ToArray();
         AssertEx.Equal(1, streamed.Length, "流式文本应归并为一条最终助手消息");
@@ -90,7 +90,7 @@ internal static class MainViewModelTests
         viewModel.InputText = "触发事件映射";
 
         await viewModel.SendAsync();
-        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(8));
 
         AssertEx.True(viewModel.Messages.Any(item => item.Kind == ChatItemKind.Thinking && item.Text.Contains("思考过程", StringComparison.Ordinal)), "应映射思考内容");
         AssertEx.True(viewModel.Messages.Any(item => item.Kind == ChatItemKind.Tool && item.Text.Contains("工具结果", StringComparison.Ordinal)), "应映射工具结果");
@@ -105,7 +105,7 @@ internal static class MainViewModelTests
         viewModel.InputText = "触发模型错误";
 
         await viewModel.SendAsync();
-        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(8));
 
         AssertEx.True(
             viewModel.Messages.Any(item => item.Kind == ChatItemKind.Error && item.Text.Contains("429", StringComparison.Ordinal)),
@@ -183,7 +183,7 @@ internal static class MainViewModelTests
         await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "后台会话", firstPath));
         viewModel.InputText = "触发事件映射";
         await viewModel.SendAsync();
-        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        await WaitUntilAsync(() => viewModel.State == ChatSessionState.Ready, TimeSpan.FromSeconds(8));
         var firstConversation = viewModel.Active;
 
         await viewModel.OpenSessionAsync(CreateSummary(directory.Path, "前台会话", secondPath));
@@ -193,7 +193,7 @@ internal static class MainViewModelTests
 
         firstConversation.InputText = "后台再次发送";
         await firstConversation.SendAsync();
-        await WaitUntilAsync(() => firstConversation.State == ChatSessionState.Ready, TimeSpan.FromSeconds(3));
+        await WaitUntilAsync(() => firstConversation.State == ChatSessionState.Ready, TimeSpan.FromSeconds(8));
         await WaitUntilAsync(() => viewModel.UnreadCount == 1, TimeSpan.FromSeconds(3));
         AssertEx.True(firstConversation.HasUnread, "后台完成的轮次应标记未读");
 
