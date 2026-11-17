@@ -2,6 +2,7 @@
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:p="clr-namespace:PIHarness.Avalonia.Presentation"
+             xmlns:sys="using:System"
              RequestedThemeVariant="Dark">
     <Application.Styles>
         <FluentTheme />
@@ -59,9 +60,13 @@
             <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
             <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
         </Style>
     </Application.Styles>
     <Application.Resources>
@@ -94,6 +99,75 @@
                     </ControlTemplate>
                 </Setter>
             </ControlTheme>
+            <!-- ==== FluentTheme palette overrides: align framework controls with the Pi Harbor dark palette. ==== -->
+            <SolidColorBrush x:Key="ComboBoxBackground" Color="#232222" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused" Color="#232222" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#2B2A2A" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#343232" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundDisabled" Color="#232222" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundBorderBrushUnfocused" Color="#383636" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundBorderBrushFocused" Color="#7D73EA" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#383636" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#4A4763" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#7D73EA" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#383636" />
+            <SolidColorBrush x:Key="ComboBoxForeground" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ComboBoxForegroundDisabled" Color="#777272" />
+            <SolidColorBrush x:Key="ComboBoxForegroundFocused" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ComboBoxForegroundFocusedPressed" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForeground" Color="#777272" />
+            <SolidColorBrush x:Key="ComboBoxPlaceHolderForegroundFocusedPressed" Color="#777272" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#232222" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#383636" />
+            <SolidColorBrush x:Key="ComboBoxDropDownGlyphForeground" Color="#A8A3A3" />
+            <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocused" Color="#A8A3A3" />
+            <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" Color="#A8A3A3" />
+            <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundDisabled" Color="#777272" />
+            <sys:Double x:Key="ComboBoxMinHeight">34</sys:Double>
+            <SolidColorBrush x:Key="ComboBoxItemBackground" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#2B2A2A" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#343232" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#454064" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#4A4470" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#37334F" />
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundDisabled" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxItemForeground" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ComboBoxItemForegroundSelected" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ComboBoxItemForegroundDisabled" Color="#777272" />
+            <SolidColorBrush x:Key="ComboBoxItemBorderBrush" Color="#00FFFFFF" />
+
+            <SolidColorBrush x:Key="ScrollBarBackground" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarBackgroundPointerOver" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarTrackStroke" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarTrackStrokePointerOver" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarTrackBorderBrush" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarThumbBackgroundColor" Color="#575454" />
+            <SolidColorBrush x:Key="ScrollBarThumbFillPointerOver" Color="#716D6D" />
+            <SolidColorBrush x:Key="ScrollBarThumbFillPressed" Color="#716D6D" />
+            <SolidColorBrush x:Key="ScrollBarThumbFillDisabled" Color="#383636" />
+            <SolidColorBrush x:Key="ScrollBarButtonBackground" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarButtonBackgroundPointerOver" Color="#2B2A2A" />
+            <SolidColorBrush x:Key="ScrollBarButtonBackgroundPressed" Color="#343232" />
+            <SolidColorBrush x:Key="ScrollBarButtonBackgroundDisabled" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarButtonBorderBrush" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarButtonBorderBrushPointerOver" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarButtonBorderBrushPressed" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarButtonBorderBrushDisabled" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarButtonArrowForeground" Color="#777272" />
+            <SolidColorBrush x:Key="ScrollBarButtonArrowForegroundPointerOver" Color="#A8A3A3" />
+            <SolidColorBrush x:Key="ScrollBarButtonArrowForegroundPressed" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ScrollBarButtonArrowForegroundDisabled" Color="#383636" />
+            <SolidColorBrush x:Key="ScrollBarForeground" Color="#F1EEEE" />
+            <SolidColorBrush x:Key="ScrollBarPanningThumbBackground" Color="#575454" />
+            <sys:Double x:Key="ScrollBarSize">10</sys:Double>
+            <Thickness x:Key="ComboBoxBorderThemeThickness">1</Thickness>
+
+            <SolidColorBrush x:Key="ToolTipBackground" Color="#303030" />
+            <SolidColorBrush x:Key="ToolTipForeground" Color="#F1EEEE" />
+            <!-- ==== end overrides ==== -->
+
             <p:StringNotEmptyToBoolConverter x:Key="StringNotEmptyToBool" />
             <p:BytesToBitmapConverter x:Key="BytesToBitmap" />
             <p:InverseBoolConverter x:Key="InverseBool" />
