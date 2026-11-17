@@ -77,6 +77,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public RecentSessionsGroupViewModel RecentSessionGroup { get; } = new();
     public ObservableCollection<SessionItemViewModel> SidebarRecentSessions => RecentSessionGroup.Sessions;
     public ObservableCollection<object> SidebarGroups { get; } = [];
+    public bool HasSidebarGroups => SidebarGroups.Count > 0;
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand SendCommand => Active.SendCommand;

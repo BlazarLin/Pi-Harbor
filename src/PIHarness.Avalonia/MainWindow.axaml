@@ -142,12 +142,21 @@
 
         <!-- :::: Sidebar data templates. :::: -->
         <TreeDataTemplate x:Key="RecentGroupTemplate" DataType="{x:Type vm:RecentSessionsGroupViewModel}" ItemsSource="{Binding Sessions}">
-            <TextBlock Text="最近 10 个对话" Margin="0,5,0,3" FontWeight="SemiBold"
-                       Foreground="{DynamicResource PrimaryTextBrush}" />
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,3" Cursor="Hand" PointerReleased="OnToggleGroupClick">
+                    <TextBlock Text="🕘" FontSize="13" Margin="0,1,7,0" />
+                    <TextBlock Text="最近 10 个对话" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource PrimaryTextBrush}" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Sessions}" Margin="14,0,0,4"
+                              IsVisible="{Binding IsExpanded}"
+                              ItemTemplate="{StaticResource SessionItemInnerTemplate}" />
+            </StackPanel>
         </TreeDataTemplate>
 
-        <DataTemplate x:Key="SessionItemTemplate" DataType="{x:Type vm:SessionItemViewModel}">
-            <StackPanel Margin="2,4,4,4">
+        <DataTemplate x:Key="SessionItemInnerTemplate" DataType="{x:Type vm:SessionItemViewModel}">
+            <StackPanel Margin="2,3,4,3" Cursor="Hand" PointerReleased="OnSessionItemClick"
+                        Classes.current="{Binding IsCurrent}" Classes.starred="{Binding IsStarred}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -158,7 +167,7 @@
                     <TextBlock Grid.Column="1" Text="★" Foreground="{DynamicResource StarBrush}" Margin="6,0,0,0"
                                IsVisible="{Binding IsStarred}" />
                 </Grid>
-                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                     <TextBlock Text="● 未读 " Foreground="{DynamicResource UnreadBrush}" FontSize="11"
                                FontWeight="SemiBold" IsVisible="{Binding HasUnread}" />
                     <TextBlock Text="◌ 处理中 " Foreground="{DynamicResource AccentBrush}" FontSize="11"
@@ -178,15 +187,21 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ProjectGroupTemplate" DataType="{x:Type vm:ProjectGroupViewModel}">
-            <Grid Margin="0,5,0,3" ToolTip.Tip="{Binding Cwd}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="22" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="▱" FontSize="17" Foreground="{DynamicResource SecondaryTextBrush}" />
-                <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource PrimaryTextBrush}" />
-            </Grid>
+            <StackPanel>
+                <Grid Margin="0,6,0,3" ToolTip.Tip="{Binding Cwd}" Cursor="Hand" PointerReleased="OnToggleGroupClick">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="📁" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"
+                               TextTrimming="CharacterEllipsis" Foreground="{DynamicResource PrimaryTextBrush}"
+                               VerticalAlignment="Center" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Sessions}" Margin="14,0,0,4"
+                              IsVisible="{Binding IsExpanded}"
+                              ItemTemplate="{StaticResource SessionItemInnerTemplate}" />
+            </StackPanel>
         </DataTemplate>
 
         <DataTemplate x:Key="SearchResultTemplate">
@@ -272,49 +287,12 @@
                 </Border>
 
                 <Grid>
-                    <TreeView x:Name="SessionTree" ItemsSource="{Binding SidebarGroups}"
-                              Background="Transparent" BorderThickness="0" Padding="8,0,8,8"
-                              Foreground="{DynamicResource PrimaryTextBrush}"
-                              SelectionChanged="OnSessionSelected"
-                              ItemTemplate="{StaticResource SidebarTemplateSelector}"
-                              IsVisible="{Binding !IsSearchActive}">
-                        <TreeView.ItemContainerTheme>
-                            <ControlTheme TargetType="TreeViewItem">
-                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                                <Setter Property="Padding" Value="4,1" />
-                                <Setter Property="MinHeight" Value="0" />
-                                <Setter Property="Template">
-                                    <ControlTemplate>
-                                        <StackPanel>
-                                            <Border x:Name="HeaderBorder" CornerRadius="6" Padding="4,1"
-                                                    BorderBrush="Transparent" BorderThickness="3,0,0,0"
-                                                    Background="Transparent">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="18" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <ToggleButton x:Name="Expander" Focusable="False"
-                                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                                                                  Classes="flat" Padding="0">
-                                                        <Panel>
-                                                            <TextBlock Text="›" FontSize="17"
-                                                                       IsVisible="{Binding !IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
-                                                            <TextBlock Text="⌄" FontSize="17"
-                                                                       IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
-                                                        </Panel>
-                                                    </ToggleButton>
-                                                    <ContentPresenter Grid.Column="1" Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
-                                                </Grid>
-                                            </Border>
-                                            <ItemsPresenter x:Name="ItemsHost" Margin="18,0,0,0"
-                                                            IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
-                                        </StackPanel>
-                                    </ControlTemplate>
-                                </Setter>
-                            </ControlTheme>
-                        </TreeView.ItemContainerTheme>
-                    </TreeView>
+                    <TextBlock Text="正在加载会话…" Margin="12,18" Foreground="{DynamicResource MutedTextBrush}"
+                               IsVisible="{Binding HasSidebarGroups, Converter={StaticResource InverseBool}}" />
+                    <ScrollViewer Padding="8,0,8,8" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="SessionTree" ItemsSource="{Binding SidebarGroups}"
+                                      ItemTemplate="{StaticResource SidebarTemplateSelector}" />
+                    </ScrollViewer>
                     <ListBox x:Name="GlobalSearchResults" ItemsSource="{Binding SearchResults}"
                              SelectionChanged="OnSearchResultSelected" Background="Transparent" BorderThickness="0"
                              Padding="10,0,10,8" IsVisible="{Binding IsSearchActive}">

@@ -336,12 +336,24 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnSessionSelected(object? sender, SelectionChangedEventArgs args)
+    private async void OnSessionItemClick(object? sender, PointerReleasedEventArgs args)
     {
-        if (args.AddedItems.Count > 0 && args.AddedItems[0] is SessionItemViewModel sessionItem && _viewModel.CanSwitchSession)
+        if (sender is Control { DataContext: SessionItemViewModel sessionItem } && _viewModel.CanSwitchSession)
         {
             await _viewModel.OpenSessionAsync(sessionItem.Session);
             PromptBox.Focus();
+        }
+    }
+
+    private void OnToggleGroupClick(object? sender, PointerReleasedEventArgs args)
+    {
+        if (sender is Control { DataContext: ProjectGroupViewModel group })
+        {
+            group.IsExpanded = !group.IsExpanded;
+        }
+        else if (sender is Control { DataContext: RecentSessionsGroupViewModel recent })
+        {
+            recent.IsExpanded = !recent.IsExpanded;
         }
     }
 

@@ -84,8 +84,19 @@
             <SolidColorBrush x:Key="UnreadBrush" Color="#7D73EA" />
             <SolidColorBrush x:Key="HighlightBrush" Color="#4A4470" />
 
+            <ControlTheme x:Key="ExpanderToggle" TargetType="ToggleButton">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
             <p:StringNotEmptyToBoolConverter x:Key="StringNotEmptyToBool" />
             <p:BytesToBitmapConverter x:Key="BytesToBitmap" />
+            <p:InverseBoolConverter x:Key="InverseBool" />
             <p:MessageTemplateSelector x:Key="MessageTemplateSelector" />
             <p:SidebarTemplateSelector x:Key="SidebarTemplateSelector" />
         </ResourceDictionary>

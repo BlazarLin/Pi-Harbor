@@ -162,6 +162,7 @@ public sealed partial class MainViewModel
         SidebarGroups.Clear();
         SidebarGroups.Add(RecentSessionGroup);
         foreach (var project in Projects) SidebarGroups.Add(project);
+        OnPropertyChanged(nameof(HasSidebarGroups));
         OnPropertyChanged(nameof(TotalSessionCount));
         OnPropertyChanged(nameof(ActiveSessionCount));
         OnPropertyChanged(nameof(ArchivedSessionCount));
