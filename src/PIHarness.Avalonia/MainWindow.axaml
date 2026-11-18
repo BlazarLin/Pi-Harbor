@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
         xmlns:p="clr-namespace:PIHarness.Avalonia.Presentation"
+        xmlns:hm="clr-namespace:PIHarness.Avalonia.Presentation"
         xmlns:vm="clr-namespace:PIHarness.App.ViewModels;assembly=PIHarness.ViewModels"
         Title="{Binding WindowTitle}"
         Width="1280" Height="820" MinWidth="960" MinHeight="640"
@@ -29,7 +30,7 @@
                         ContextMenu="{StaticResource MessageContextMenu}"
                         Classes.highlighted="{Binding IsHighlighted}">
                     <StackPanel>
-                        <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                        <hm:HarborMarkdownScrollViewer Markdown="{Binding Text}" />
                         <ItemsControl ItemsSource="{Binding Images}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -58,7 +59,7 @@
                     <StackPanel>
                         <TextBlock Text="⏳ 排队中 · 当前回答结束后自动发送（右键可撤回）"
                                    Foreground="{DynamicResource AccentBrush}" FontSize="11" Margin="0,0,0,4" />
-                        <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                        <hm:HarborMarkdownScrollViewer Markdown="{Binding Text}" />
                         <ItemsControl ItemsSource="{Binding Images}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -83,7 +84,7 @@
                 <Border MaxWidth="880" HorizontalAlignment="Left" Background="Transparent" CornerRadius="6" Padding="2"
                         ContextMenu="{StaticResource MessageContextMenu}"
                         Classes.highlighted="{Binding IsHighlighted}">
-                    <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                    <hm:HarborMarkdownScrollViewer Markdown="{Binding Text}" />
                 </Border>
             </Grid>
         </DataTemplate>
@@ -92,7 +93,7 @@
             <Border Margin="18,5,70,5" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     CornerRadius="6" Padding="10,7" ContextMenu="{StaticResource MessageContextMenu}"
                     Classes.highlighted="{Binding IsHighlighted}">
-                <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                <hm:HarborMarkdownScrollViewer Markdown="{Binding Text}" />
             </Border>
         </DataTemplate>
 
@@ -116,7 +117,7 @@
                       Header="思考过程" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                 <Border Margin="0,6,0,0" Padding="10,4" ContextMenu="{StaticResource MessageContextMenu}"
                         Classes.highlighted="{Binding IsHighlighted}">
-                    <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                    <hm:HarborMarkdownScrollViewer Markdown="{Binding Text}" />
                 </Border>
             </Expander>
         </DataTemplate>
@@ -128,7 +129,7 @@
                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                         Margin="0,6,0,0" Padding="10,7" ContextMenu="{StaticResource MessageContextMenu}"
                         Classes.highlighted="{Binding IsHighlighted}">
-                    <md:MarkdownScrollViewer Markdown="{Binding Text}" />
+                    <hm:HarborMarkdownScrollViewer Markdown="{Binding Text}" />
                 </Border>
             </Expander>
         </DataTemplate>

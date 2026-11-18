@@ -1,6 +1,7 @@
 <Application x:Class="PIHarness.Avalonia.App"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
              xmlns:p="clr-namespace:PIHarness.Avalonia.Presentation"
              xmlns:sys="using:System"
              RequestedThemeVariant="Dark">
@@ -68,6 +69,7 @@
         <Style Selector="TextBox">
             <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
         </Style>
+
     </Application.Styles>
     <Application.Resources>
         <ResourceDictionary>
