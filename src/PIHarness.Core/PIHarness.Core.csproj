@@ -3,4 +3,7 @@
     <AssemblyName>PIHarness.Core</AssemblyName>
     <RootNamespace>PIHarness.Core</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PIHarness.Tests" />
+  </ItemGroup>
 </Project>
