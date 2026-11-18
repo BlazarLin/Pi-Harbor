@@ -484,7 +484,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="PromptBox" Text="{Binding InputText, Mode=TwoWay}" PlaceholderText="输入消息，@ 引用文件，/ 选择命令或 skill"
+                        <TextBox x:Name="PromptBox" Classes="composer" Text="{Binding InputText, Mode=TwoWay}" PlaceholderText="输入消息，@ 引用文件，/ 选择命令或 skill"
                                  AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" MaxHeight="170"
                                  Background="Transparent"
                                  Foreground="{DynamicResource PrimaryTextBrush}" BorderThickness="0" Padding="3,5"

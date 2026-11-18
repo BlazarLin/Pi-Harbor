@@ -69,6 +69,31 @@
         <Style Selector="TextBox">
             <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
         </Style>
+        <!-- Composer input: borderless like the WPF PromptBox (sits directly on the panel). -->
+        <Style Selector="TextBox.composer">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+            <Style.Resources>
+                <SolidColorBrush x:Key="TextControlBackground">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBackgroundPointerOver">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBackgroundFocused">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBackgroundDisabled">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBorderBrush">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBorderBrushFocused">Transparent</SolidColorBrush>
+                <SolidColorBrush x:Key="TextControlBorderBrushDisabled">Transparent</SolidColorBrush>
+                <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                <Thickness x:Key="TextControlBorderThemeThicknessPointerOver">0</Thickness>
+                <Thickness x:Key="TextControlBorderThemeThicknessDisabled">0</Thickness>
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#777272" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#777272" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#777272" />
+            </Style.Resources>
+        </Style>
 
     </Application.Styles>
     <Application.Resources>
