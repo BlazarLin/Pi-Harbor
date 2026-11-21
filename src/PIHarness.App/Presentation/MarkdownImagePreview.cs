@@ -19,33 +19,12 @@ public sealed partial class MarkdownTextBlock
     private static readonly HttpClient ImageClient = new() { Timeout = TimeSpan.FromSeconds(15) };
     private const int MaxPreviewBytes = 10 * 1024 * 1024;
 
-    public static string? ResolveImagePath(string raw, string directory)
-    {
-        var path = raw.Trim().Trim('<', '>');
-        if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
-        {
-            if (uri.Scheme is "http" or "https") return IsPreviewImage(uri.AbsolutePath) ? uri.AbsoluteUri : null;
-            if (uri.IsFile && !uri.IsUnc) path = uri.LocalPath;
-            else return null;
-        }
-        if (!IsPreviewImage(path) || path.StartsWith(@"\\", StringComparison.Ordinal)) return null;
-        if (!Path.IsPathFullyQualified(path) && string.IsNullOrWhiteSpace(directory)) return null;
-        try
-        {
-            var fullPath = Path.GetFullPath(Path.IsPathFullyQualified(path) ? path : Path.Combine(directory, Uri.UnescapeDataString(path)));
-            return fullPath.StartsWith(@"\\", StringComparison.Ordinal) ? null : fullPath;
-        }
-        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
-    }
-
-    private static bool IsPreviewImage(string path) => Path.GetExtension(path).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff";
-
     private bool TryAddImageLine(string line)
     {
         (Match Match, string? Path)[] matches;
         try
         {
-            matches = ImageLink.Matches(line).Cast<Match>().Select(match => (Match: match, Path: ResolveImagePath(match.Groups["path"].Value, BaseDirectory)))
+            matches = ImageLink.Matches(line).Cast<Match>().Select(match => (Match: match, Path: MarkdownImageReference.ResolveImagePath(match.Groups["path"].Value, BaseDirectory)))
                 .Where(item => item.Path is not null).ToArray();
         }
         catch (RegexMatchTimeoutException) { return false; }

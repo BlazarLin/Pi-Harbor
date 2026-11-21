@@ -41,8 +41,18 @@ internal static class Program
             .ToArray();
 
         var nFailed = 0;
+        var nSkipped = 0;
         foreach (var item in testMethods)
         {
+            var unsupportedPlatform = item.Method.GetCustomAttributes<PlatformOnlyAttribute>()
+                .FirstOrDefault(attribute => !attribute.IsSupported);
+            if (unsupportedPlatform is not null)
+            {
+                nSkipped++;
+                Console.WriteLine($"[跳过] {item.Attribute!.Id}：{item.Attribute.Goal}（仅 {unsupportedPlatform.Platform}）");
+                continue;
+            }
+
             try
             {
                 var result = item.Method.Invoke(null, null);
@@ -150,7 +160,7 @@ internal static class Program
             }
         }
 
-        Console.WriteLine($"测试完成：总计 {testMethods.Length}，通过 {testMethods.Length - nFailed}，失败 {nFailed}");
+        Console.WriteLine($"测试完成：总计 {testMethods.Length}，通过 {testMethods.Length - nFailed - nSkipped}，跳过 {nSkipped}，失败 {nFailed}");
         return nFailed == 0 ? 0 : 1;
     }
 

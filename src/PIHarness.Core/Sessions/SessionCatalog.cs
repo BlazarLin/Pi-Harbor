@@ -192,8 +192,10 @@ public sealed class SessionCatalog : IDisposable
 
     private static string GetDisplayName(string cwd)
     {
-        var trimmed = System.IO.Path.TrimEndingDirectorySeparator(cwd);
-        var name = System.IO.Path.GetFileName(trimmed);
+        // 会话可能由另一平台创建：Windows 记录反斜杠路径，Unix 记录斜杠路径，两种分隔符都必须识别。
+        var trimmed = cwd.TrimEnd('/', '\\');
+        var separatorIndex = trimmed.LastIndexOfAny(['/', '\\']);
+        var name = separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..] : trimmed;
         return string.IsNullOrWhiteSpace(name) ? cwd : name;
     }
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Pi Harbor
+GenericName=Pi Session Desk
+Comment=集中停靠、浏览并继续本机 Pi 会话
+Exec=@EXEC@
+TryExec=@EXEC@
+Icon=pi-harbor
+Terminal=false
+Categories=Development;
+Keywords=pi;ai;session;chat;harbor;
+StartupNotify=true

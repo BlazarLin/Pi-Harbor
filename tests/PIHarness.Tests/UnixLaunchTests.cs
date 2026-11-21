@@ -28,9 +28,6 @@ internal static class UnixLaunchTests
             try
             {
                 var located = PiProcessLocator.Find();
-                Console.WriteLine("DEBUG51B fileExists=" + File.Exists(piCommand) + " piCommand=" + piCommand);
-                located = PiProcessLocator.Find();
-                Console.WriteLine("DEBUG51A path='" + Environment.GetEnvironmentVariable("PATH") + "' found=" + located.Found + " cmd=" + located.PiCommandPath + " err=" + located.ErrorMessage);
                 AssertEx.True(located.Found, "应通过 PATH 找到 pi");
                 AssertEx.Equal(piCommand, located.PiCommandPath, "定位结果必须指向 PATH 中的 pi");
                 AssertEx.True(located.ErrorMessage is null, "成功定位不得携带错误信息");
@@ -65,6 +62,8 @@ internal static class UnixLaunchTests
         {
             var previousPath = Environment.GetEnvironmentVariable("PATH");
             Environment.SetEnvironmentVariable("PATH", string.Empty);
+            // 本机可能已把 pi 装在固定目录，测试期间清空兜底列表才能验证“完全找不到”的分支。
+            PiProcessLocator.UnixFallbackDirectoryOverride = [];
             try
             {
                 var located = PiProcessLocator.Find();
@@ -73,6 +72,7 @@ internal static class UnixLaunchTests
             }
             finally
             {
+                PiProcessLocator.UnixFallbackDirectoryOverride = null;
                 Environment.SetEnvironmentVariable("PATH", previousPath);
             }
         }

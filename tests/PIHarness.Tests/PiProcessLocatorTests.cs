@@ -8,6 +8,7 @@ namespace PIHarness.Tests;
 internal static class PiProcessLocatorTests
 {
     [TestCase("TEST-06", "启动参数使用指定项目作为工作目录")]
+    [PlatformOnly("windows")] // 断言 cmd.exe 引号与 pi.cmd，Unix 分支由 TEST-51A 覆盖
     public static void UsesSelectedWorkingDirectory()
     {
         using var directory = new TemporaryDirectory();

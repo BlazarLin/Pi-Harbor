@@ -1,13 +1,13 @@
 # Pi Harbor
 
-**Pi Session Desk — 本地 Pi 会话的 Windows 桌面工作台。**
+**Pi Session Desk — 本地 Pi 会话的桌面工作台（Windows + Linux）。**
 
 [![Windows CI](https://github.com/BlazarLin/Pi-Harbor/actions/workflows/ci.yml/badge.svg)](https://github.com/BlazarLin/Pi-Harbor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-7D73EA.svg)](LICENSE)
 
 按项目浏览本机 Pi 会话，找回最近的交流，继续文字与图片对话。无需启动本地 Web 服务。
 
-**源码版本：1.9.0 · 已验证 Pi：0.85.1 · Windows 10/11 x64**
+**源码版本：1.9.0 · 已验证 Pi：0.85.1 · Windows 10/11 x64 · Ubuntu 24.04 x64**
 
 ### 1.7.1 更新（2026-09-30）
 
@@ -64,11 +64,26 @@ Overview 与输出预览（全部使用独立生成的演示会话，不含真�
 
 | 文件 | 使用方式 |
 | --- | --- |
-| `Pi-Harbor-Setup-win-x64.exe` | 当前用户安装、开始菜单入口、可选桌面快捷方式，支持升级和卸载 |
-| `Pi-Harbor-win-x64.zip` | 便携版，解压后运行 `Pi-Harbor.exe` |
-| `SHA256SUMS.txt` | 对照 `Get-FileHash 文件名 -Algorithm SHA256` 验证下载 |
+| `Pi-Harbor-Setup-win-x64.exe` | Windows：当前用户安装、开始菜单入口、可选桌面快捷方式，支持升级和卸载 |
+| `Pi-Harbor-win-x64.zip` | Windows 便携版，解压后运行 `Pi-Harbor.exe` |
+| `pi-harbor_<版本>_amd64.deb` | Ubuntu/Debian：安装到 `/opt/pi-harbor`，提供 `pi-harbor` 命令与桌面图标 |
+| `Pi-Harbor-linux-x64.tar.gz` | Linux 便携版，解压后运行 `Pi-Harbor-Avalonia`，或执行包内 `install-linux.sh` |
+| `SHA256SUMS*.txt` | 对照 `Get-FileHash`（Windows）或 `sha256sum -c`（Linux）验证下载 |
 
-两种包均携带 .NET 运行库。GitHub 的 **Source code (zip)** 是源码包，不是可执行版。当前安装器未签名，Windows 可能显示发布者未知提示。
+所有包均携带 .NET 运行库。GitHub 的 **Source code (zip)** 是源码包，不是可执行版。当前安装器未签名，Windows 可能显示发布者未知提示。
+
+Linux 桌面版使用 Avalonia 前端，与 Windows 共用同一套数据层和视图模型。
+
+```bash
+# 系统级安装（提供 /usr/bin/pi-harbor 与桌面入口）
+sudo apt install ./pi-harbor_1.9.0_amd64.deb
+
+# 或者用户级安装（无需 root，默认装到 ~/.local）
+tar -xzf Pi-Harbor-linux-x64.tar.gz
+./Pi-Harbor-linux-x64/install-linux.sh --dock   # --dock 同时加入 GNOME 快捷启动栏
+```
+
+Linux 版暂不支持系统通知、任务栏角标与全局热键：完成提示通过侧栏未读和窗口标题呈现。`打开项目目录` 入口仍在 Windows 前端中，Linux 前端暂未提供。
 
 ## 先准备 Pi
 
@@ -76,7 +91,7 @@ Pi Harbor 依赖用户安装的 [Pi coding agent](https://github.com/earendil-wo
 
 兼容性验证基线为 **`@earendil-works/pi-coding-agent` 0.85.1**，不保证所有旧版本或未来版本都兼容。先准备符合 Pi 要求的 Node.js，再安装基线版本：
 
-```powershell
+```bash
 npm install -g @earendil-works/pi-coding-agent@0.85.1
 pi --version
 pi
@@ -158,7 +173,11 @@ Overview 读取默认会话目录中全部已发现 JSONL 的助手用量记录�
 
 ## 从源码构建
 
-需要 Windows x64 和 .NET 10 SDK。应用使用 Microsoft.Toolkit.Uwp.Notifications 发送系统通知；自包含发布需恢复官方运行库包。自动测试使用伪 RPC，不需要 Pi 或模型密钥。
+自动测试使用伪 RPC，不需要 Pi、模型密钥或网络。
+
+### Windows
+
+需要 Windows x64 和 .NET 10 SDK。WPF 前端使用 Microsoft.Toolkit.Uwp.Notifications 发送系统通知；自包含发布需恢复官方运行库包。
 
 ```powershell
 git clone https://github.com/BlazarLin/Pi-Harbor.git
@@ -176,9 +195,28 @@ powershell -NoProfile -File scripts/build-release.ps1
 powershell -NoProfile -File scripts/build-release.ps1 -IncludeInstaller
 ```
 
+### Linux（Ubuntu 24.04 x64）
+
+需要 .NET 10 SDK 与 `dpkg-deb`（Ubuntu 默认自带）。solution 含 Windows 专属 WPF 工程，Linux 上改为直接构建 Avalonia 前端：
+
+```bash
+git clone https://github.com/BlazarLin/Pi-Harbor.git
+cd Pi-Harbor
+dotnet build src/PIHarness.Avalonia/PIHarness.Avalonia.csproj -c Release
+./scripts/run-tests.sh                      # 跨平台测试（WPF 专属用例自动跳过）
+./scripts/build-release-linux.sh            # 测试 + 发布 + 打包
+./scripts/install-linux.sh --dock           # 用户级安装并加入快捷启动栏
+```
+
+输出位于 `artifacts/Pi-Harbor-linux-x64/`、`artifacts/Pi-Harbor-linux-x64.tar.gz` 与 `artifacts/pi-harbor_<版本>_amd64.deb`。`build-release-linux.sh` 支持 `--skip-tests` 跳过测试、`--skip-smoke` 跳过 `--version` 启动冒烟；`install-linux.sh` 支持 `--prefix` 自定义安装前缀与 `--uninstall` 卸载。
+
+Linux 端的测试工程按操作系统选择目标框架：Windows 构建 `net10.0-windows` 并包含 WPF 契约用例，Linux 构建 `net10.0` 只包含跨平台用例。
+
 ### GitHub Release 配置
 
-已提供 Windows CI 和版本标签发布工作流。推送与项目版本一致的标签（当前源码为 `v1.9.0`）后，自动测试、打包并创建带 **安装 EXE、便携 ZIP、SHA256SUMS** 的 Release 草稿；维护者检查后点击 Publish release，用户即可下载。
+已提供 Windows CI、Linux CI 和版本标签发布工作流。推送与项目版本一致的标签（当前源码为 `v1.9.0`）后，Windows 工作流自动测试、打包并创建带 **安装 EXE、便携 ZIP、SHA256SUMS** 的 Release 草稿；维护者检查后点击 Publish release，用户即可下载。
+
+Linux CI 在每次推送与 PR 上运行跨平台测试并构建 Debian 包与便携包，用于验证打包链路；对应的 `pi-harbor_<版本>_amd64.deb`、`Pi-Harbor-linux-x64.tar.gz` 与 `SHA256SUMS-linux.txt` 需要维护者手动附加到 Release（Windows 标签工作流只上传 Windows 资产）。
 
 详细设置、标签命令、手动构建、权限与签名说明见 [GitHub 发布指南](docs/GITHUB_RELEASE.md)。
 

@@ -4,10 +4,16 @@ Pi Harbor source code is distributed under the MIT license in `LICENSE`.
 
 ## Bundled runtime
 
-Self-contained Windows downloads include Microsoft .NET and Windows Desktop Runtime files. The build copies their license and available third-party notice files from the exact restored packages into `licenses/` in both the ZIP and installed application.
+Self-contained Windows downloads include Microsoft .NET and Windows Desktop Runtime files. Self-contained Linux downloads include the Microsoft .NET runtime files. The build copies their license and available third-party notice files from the exact restored packages into `licenses/` in both the ZIP and installed application.
 
 - [.NET runtime license and notices](https://github.com/dotnet/runtime)
 - [WPF license and notices](https://github.com/dotnet/wpf)
+
+Linux builds copy the runtime `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT` into `licenses/microsoft.netcore.app.runtime.linux-x64/`.
+
+## Linux UI stack
+
+The Avalonia frontend bundles the following MIT-licensed libraries: [Avalonia UI](https://github.com/AvaloniaUI/Avalonia), [SkiaSharp](https://github.com/mono/SkiaSharp), [HarfBuzzSharp](https://github.com/mono/SkiaSharp), [Markdown.Avalonia](https://github.com/whistyun/Markdown.Avalonia) and [AvaloniaEdit](https://github.com/AvaloniaUI/AvaloniaEdit). The bundled [Inter](https://github.com/rsms/inter) font is distributed under the SIL Open Font License 1.1.
 
 ## Notification library
 

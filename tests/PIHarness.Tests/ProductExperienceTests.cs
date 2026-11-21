@@ -116,11 +116,11 @@ internal static class ProductExperienceTests
     {
         using var temp = new TemporaryDirectory();
         var path = Path.Combine(temp.Path, "中文 图.png");
-        AssertEx.Equal(path, MarkdownTextBlock.ResolveImagePath("中文%20图.png", temp.Path), "相对路径解码");
-        AssertEx.Equal(path, MarkdownTextBlock.ResolveImagePath(new Uri(path).AbsoluteUri, temp.Path), "file URI");
-        AssertEx.Equal<string?>(null, MarkdownTextBlock.ResolveImagePath(@"\\server\share\a.png", temp.Path), "UNC 不自动访问");
-        AssertEx.Equal<string?>(null, MarkdownTextBlock.ResolveImagePath("%5c%5cserver%5cshare%5ca.png", temp.Path), "编码后 UNC 也不自动访问");
-        AssertEx.Equal<string?>(null, MarkdownTextBlock.ResolveImagePath("javascript:foo.png", temp.Path), "禁用其他协议");
-        AssertEx.Equal("https://example.com/a.png", MarkdownTextBlock.ResolveImagePath("https://example.com/a.png", temp.Path), "远程地址仅作为显式加载目标");
+        AssertEx.Equal(path, MarkdownImageReference.ResolveImagePath("中文%20图.png", temp.Path), "相对路径解码");
+        AssertEx.Equal(path, MarkdownImageReference.ResolveImagePath(new Uri(path).AbsoluteUri, temp.Path), "file URI");
+        AssertEx.Equal<string?>(null, MarkdownImageReference.ResolveImagePath(@"\\server\share\a.png", temp.Path), "UNC 不自动访问");
+        AssertEx.Equal<string?>(null, MarkdownImageReference.ResolveImagePath("%5c%5cserver%5cshare%5ca.png", temp.Path), "编码后 UNC 也不自动访问");
+        AssertEx.Equal<string?>(null, MarkdownImageReference.ResolveImagePath("javascript:foo.png", temp.Path), "禁用其他协议");
+        AssertEx.Equal("https://example.com/a.png", MarkdownImageReference.ResolveImagePath("https://example.com/a.png", temp.Path), "远程地址仅作为显式加载目标");
     }
 }

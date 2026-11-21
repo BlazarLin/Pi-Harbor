@@ -9,8 +9,11 @@ namespace PIHarness.Core.Rpc;
 
 public static class PiProcessLocator
 {
-    /// <summary>Test hook: force the Unix discovery/launch branch on any OS.</summary>
+    /// <summary>测试钩子：在任意平台强制走 Unix 发现/启动分支。</summary>
     internal static bool ForceUnixMode = false;
+
+    /// <summary>测试钩子：替换 Unix 固定候选目录，null 表示使用默认列表。</summary>
+    internal static string[]? UnixFallbackDirectoryOverride { get; set; }
 
     private static bool UseUnix => ForceUnixMode || !OperatingSystem.IsWindows();
 
@@ -43,25 +46,31 @@ public static class PiProcessLocator
 
     private static PiLaunchResult FindOnUnix()
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var candidates = new List<string>
-        {
-            Path.Combine(home, ".npm-global", "bin", "pi"),
-            Path.Combine(home, ".local", "bin", "pi"),
-            Path.Combine(home, "node_modules", ".bin", "pi"),
-            "/usr/local/bin/pi",
-            "/usr/bin/pi",
-        };
-
-        // Unix PATH uses ':'; Path.PathSeparator keeps Windows drive letters intact in the test suite.
+        // PATH 优先：用户安装位置可能随时变化，固定目录只作为 GUI 启动时 PATH 过短的兜底。
         var pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         foreach (var pathEntry in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            candidates.Add(Path.Combine(pathEntry.Trim('"'), "pi"));
+            var candidate = Path.Combine(pathEntry.Trim('"'), "pi");
+            if (File.Exists(candidate))
+            {
+                return new PiLaunchResult(true, Path.GetFullPath(candidate), null);
+            }
         }
 
-        foreach (var candidate in candidates)
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var fallbackDirectories = UnixFallbackDirectoryOverride ??
+        [
+            Path.Combine(home, ".npm-global", "bin"),
+            Path.Combine(home, ".local", "bin"),
+            Path.Combine(home, "node_modules", ".bin"),
+            Path.Combine(home, ".pi", "agent", "bin"),
+            "/usr/local/bin",
+            "/usr/bin",
+        ];
+
+        foreach (var directory in fallbackDirectories)
         {
+            var candidate = Path.Combine(directory, "pi");
             if (File.Exists(candidate))
             {
                 return new PiLaunchResult(true, Path.GetFullPath(candidate), null);
