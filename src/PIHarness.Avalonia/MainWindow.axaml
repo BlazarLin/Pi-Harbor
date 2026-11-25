@@ -5,7 +5,7 @@
         xmlns:p="clr-namespace:PIHarness.Avalonia.Presentation"
         xmlns:hm="clr-namespace:PIHarness.Avalonia.Presentation"
         xmlns:vm="clr-namespace:PIHarness.App.ViewModels;assembly=PIHarness.ViewModels"
-        Title="{Binding WindowTitle}"
+        Title="Pi Harbor"
         Width="1280" Height="820" MinWidth="960" MinHeight="640"
         Background="{DynamicResource WindowBrush}"
         Foreground="{DynamicResource PrimaryTextBrush}"
@@ -198,6 +198,11 @@
                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"
                                TextTrimming="CharacterEllipsis" Foreground="{DynamicResource PrimaryTextBrush}"
                                VerticalAlignment="Center" />
+                    <Grid.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="在文件管理器中打开" Tag="{Binding Cwd}" Click="OnOpenProjectFolderClick" />
+                        </ContextMenu>
+                    </Grid.ContextMenu>
                 </Grid>
                 <ItemsControl ItemsSource="{Binding Sessions}" Margin="14,0,0,4"
                               IsVisible="{Binding IsExpanded}"
@@ -290,12 +295,15 @@
                 <Grid>
                     <TextBlock Text="正在加载会话…" Margin="12,18" Foreground="{DynamicResource MutedTextBrush}"
                                IsVisible="{Binding HasSidebarGroups, Converter={StaticResource InverseBool}}" />
-                    <ScrollViewer Padding="8,0,8,8" HorizontalScrollBarVisibility="Disabled">
+                    <!-- 搜索结果与会话树互斥，避免两个列表叠在同一区域。 -->
+                    <ScrollViewer Padding="8,0,8,8" HorizontalScrollBarVisibility="Disabled"
+                                  IsVisible="{Binding !IsSearchActive}">
                         <ItemsControl x:Name="SessionTree" ItemsSource="{Binding SidebarGroups}"
                                       ItemTemplate="{StaticResource SidebarTemplateSelector}" />
                     </ScrollViewer>
                     <ListBox x:Name="GlobalSearchResults" ItemsSource="{Binding SearchResults}"
-                             SelectionChanged="OnSearchResultSelected" Background="Transparent" BorderThickness="0"
+                             SelectionChanged="OnSearchResultSelected"
+                             Background="{DynamicResource SidebarBrush}" BorderThickness="0"
                              Padding="10,0,10,8" IsVisible="{Binding IsSearchActive}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -346,6 +354,7 @@
                         <TextBlock Text="{Binding TotalTokensText}" Foreground="{DynamicResource SecondaryTextBrush}"
                                    VerticalAlignment="Center" Margin="0,0,14,0" FontSize="12" />
                         <ComboBox x:Name="ModelSelector" Width="280" MaxDropDownHeight="420"
+                                  PlaceholderText="选择会话后可切换模型"
                                   ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel, Mode=TwoWay}"
                                   IsEnabled="{Binding CanChangeModel}" SelectionChanged="OnModelSelectionChanged">
                             <ComboBox.ItemTemplate>

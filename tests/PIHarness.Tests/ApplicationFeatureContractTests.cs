@@ -11,6 +11,7 @@ namespace PIHarness.Tests;
 internal static class ApplicationFeatureContractTests
 {
     [TestCase("TEST-22C", "项目目录使用独立参数安全打开资源管理器")]
+    [PlatformOnly("windows")]
     public static void FolderLauncherUsesArgumentList()
     {
         var path = Path.Combine(Path.GetTempPath(), "PI Harness 路径 & 空格");
@@ -18,6 +19,18 @@ internal static class ApplicationFeatureContractTests
 
         AssertEx.Equal("explorer.exe", startInfo.FileName, "必须直接调用 Windows 资源管理器");
         AssertEx.True(startInfo.UseShellExecute, "资源管理器应按桌面 Shell 方式启动");
+        AssertEx.Equal(Path.GetFullPath(path), startInfo.ArgumentList.Single(), "目录必须作为一个独立参数传递");
+        AssertEx.True(string.IsNullOrEmpty(startInfo.Arguments), "不得拼接可注入的 Arguments 字符串");
+    }
+
+    [TestCase("TEST-22F", "Linux 下用 xdg-open 以独立参数打开目录")]
+    public static void FolderLauncherUsesXdgOpenOnUnix()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "PI Harbor 路径 & 空格");
+        var startInfo = FolderLauncher.CreateStartInfo(path, bWindows: false);
+
+        AssertEx.Equal("xdg-open", startInfo.FileName, "Linux 必须交给 xdg-open");
+        AssertEx.True(startInfo.UseShellExecute, "xdg-open 应按桌面 Shell 方式启动");
         AssertEx.Equal(Path.GetFullPath(path), startInfo.ArgumentList.Single(), "目录必须作为一个独立参数传递");
         AssertEx.True(string.IsNullOrEmpty(startInfo.Arguments), "不得拼接可注入的 Arguments 字符串");
     }

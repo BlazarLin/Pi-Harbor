@@ -4,6 +4,7 @@
 
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Avalonia;
@@ -20,6 +21,7 @@ using Bitmap = Avalonia.Media.Imaging.Bitmap;
 using PIHarness.App.ViewModels;
 using PIHarness.App.Presentation;
 using PIHarness.Avalonia.Presentation;
+using PIHarness.Avalonia.Shell;
 using PIHarness.Core.Models;
 using PIHarness.Core.Sessions;
 
@@ -39,6 +41,9 @@ public partial class MainWindow : Window
     private readonly List<ChatItemViewModel> _findMatches = [];
     private readonly List<ChatItemViewModel> _highlightedMessages = [];
     private int _findIndex;
+    private readonly LinuxShell? _shell = OperatingSystem.IsLinux() ? new LinuxShell() : null;
+    private X11Attention? _attention;
+    private X11Hotkey? _hotkey;
 
     private static string? ReadCommandLineOption(string option)
     {
@@ -62,13 +67,23 @@ public partial class MainWindow : Window
             : new MainViewModel(sessionRoot);
         InitializeComponent();
         DataContext = _viewModel;
+        UpdateWindowTitle();
         MessageList.PointerWheelChanged += OnMessagePointerWheelChanged;
         Presentation.MessageTemplateSelector.WindowResources = this.Resources;
         AttachActiveMessages();
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.ConversationAttention += OnConversationAttention;
-        Activated += (_, _) => { _viewModel.IsWindowActive = true; _viewModel.MarkActiveRead(); };
-        Deactivated += (_, _) => _viewModel.IsWindowActive = false;
+        Activated += (_, _) =>
+        {
+            _viewModel.IsWindowActive = true;
+            _viewModel.MarkActiveRead();
+            UpdateShellBadge();
+        };
+        Deactivated += (_, _) =>
+        {
+            _viewModel.IsWindowActive = false;
+            UpdateShellBadge();
+        };
         _activityTimer.Tick += (_, _) => _viewModel.RefreshRelativeActivityTimes(DateTimeOffset.Now);
         _activityTimer.Start();
         _spinnerTimer.Tick += (_, _) =>
@@ -122,16 +137,143 @@ public partial class MainWindow : Window
             UpdateReturnToLatestVisibility();
             CloseFindBar();
         }
+        else if (args.PropertyName is nameof(MainViewModel.UnreadCount) or nameof(MainViewModel.BusyCount))
+        {
+            UpdateShellBadge();
+            UpdateWindowTitle();
+        }
+        else if (args.PropertyName == nameof(MainViewModel.GlobalHotkeyEnabled))
+        {
+            ApplyGlobalHotkey();
+        }
     }
 
     private void OnConversationAttention(ConversationViewModel conversation, string kind)
     {
-        // Shell notifications (toast/taskbar badge) remain in the WPF frontend for now.
+        // X11 调用必须留在 UI 线程；事件正常由 ViewModel 的 UI 调度器触发，这里再兜底一次。
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => OnConversationAttention(conversation, kind));
+            return;
+        }
+
+        if (!conversation.HasUnread)
+        {
+            return;
+        }
+
+        // Linux：Dock 角标 + 窗口紧急提示 + 系统通知，对应 WPF 的任务栏角标/闪烁/Toast。
+        UpdateShellBadge();
+        if (_viewModel.IsWindowActive)
+        {
+            return;
+        }
+
+        if (_viewModel.FlashWindowEnabled)
+        {
+            _attention?.RequestAttention(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
+        }
+
+        if (_viewModel.ToastNotificationsEnabled)
+        {
+            _shell?.Notify(
+                kind == "failed" ? "Pi 会话运行失败" : "Pi 会话已结束",
+                $"『{conversation.Title}』有新结果，点击查看。",
+                () => Dispatcher.UIThread.Post(async () =>
+                {
+                    if (_shutdownComplete)
+                    {
+                        return;
+                    }
+
+                    Show();
+                    if (WindowState == WindowState.Minimized)
+                    {
+                        WindowState = WindowState.Normal;
+                    }
+
+                    Activate();
+                    await _viewModel.OpenNotificationAsync(conversation.SessionPath ?? conversation.Key);
+                }));
+        }
+    }
+
+    /// <summary>未读数写进窗口标题：Dock 支持角标时用角标，不支持时仍能在悬停提示和概览里看到数量。</summary>
+    private void UpdateWindowTitle()
+    {
+        var nUnread = _viewModel.UnreadCount;
+        Title = nUnread > 0 ? $"({nUnread}) {_viewModel.WindowTitle}" : _viewModel.WindowTitle;
+    }
+
+    /// <summary>把未读数同步到 Dock 角标；窗口在前台时不算紧急。</summary>
+    private void UpdateShellBadge()
+    {
+        var nUnread = _viewModel.UnreadCount;
+        _shell?.SetUnread(nUnread, nUnread > 0 && !_viewModel.IsWindowActive);
+    }
+
+    /// <summary>全局热键 Ctrl+Alt+P：窗口在前台则隐藏，否则显示并激活。</summary>
+    private void ApplyGlobalHotkey()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        if (_viewModel.GlobalHotkeyEnabled)
+        {
+            _hotkey ??= X11Hotkey.TryStart(ToggleWindowVisibility);
+        }
+        else if (_hotkey is not null)
+        {
+            _hotkey.Dispose();
+            _hotkey = null;
+        }
+    }
+
+    private void ToggleWindowVisibility()
+    {
+        if (IsActive)
+        {
+            Hide();
+            return;
+        }
+
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    private void OnOpenProjectFolderClick(object? sender, RoutedEventArgs args)
+    {
+        if (sender is not MenuItem { Tag: string cwd } || string.IsNullOrWhiteSpace(cwd))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(FolderLauncher.CreateStartInfo(cwd));
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            _viewModel.ReportRecoverableError($"打开目录失败：{error.Message}");
+        }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await _viewModel.InitializeAsync();
+        if (OperatingSystem.IsLinux())
+        {
+            _attention = X11Attention.TryOpen();
+            ApplyGlobalHotkey();
+            UpdateShellBadge();
+        }
         var captureSessionPath = ReadCommandLineOption("--capture-session");
         if (!string.IsNullOrWhiteSpace(captureSessionPath))
         {
@@ -155,6 +297,15 @@ public partial class MainWindow : Window
             }
         }
 
+        if (Environment.GetCommandLineArgs().Contains("--qa-shell-probe", StringComparer.Ordinal))
+        {
+            await RunShellProbeAsync();
+            await _viewModel.ShutdownAsync();
+            _shutdownComplete = true;
+            Close();
+            return;
+        }
+
         var capturePath = ReadCommandLineOption("--capture-ui");
         if (!string.IsNullOrWhiteSpace(capturePath))
         {
@@ -168,6 +319,103 @@ public partial class MainWindow : Window
             _shutdownComplete = true;
             Environment.ExitCode = 0;
             Close();
+        }
+    }
+
+    /// <summary>Linux 桌面集成冒烟：通知、Dock 角标、紧急提示与热键注册各走一遍。</summary>
+    private async Task RunShellProbeAsync()
+    {
+        var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        Console.WriteLine($"platform-linux={OperatingSystem.IsLinux()} display={Environment.GetEnvironmentVariable("DISPLAY")} window=0x{handle:X}");
+        Console.WriteLine($"notification-daemon={await QueryNotificationServerAsync()}");
+        Console.WriteLine($"hotkey-registered={_hotkey is not null}");
+        _shell?.Notify("Pi Harbor 冒烟检查", "通知链路正常，点击可打开会话。", () => Console.WriteLine("notification-clicked=true"));
+        _shell?.SetUnread(2, true);
+        // 窗口在前台时 WM 会忽略 DEMANDS_ATTENTION：冒烟脚本可指定一个未聚焦窗口验证。
+        var attentionTarget = handle;
+        if (ReadCommandLineOption("--qa-attention-target") is { } targetText &&
+            long.TryParse(targetText, System.Globalization.NumberStyles.HexNumber, null, out var targetId))
+        {
+            attentionTarget = new IntPtr(targetId);
+        }
+
+        _attention?.RequestAttention(attentionTarget);
+        await Task.Delay(600);
+        Console.WriteLine($"window-state={await QueryWindowStateAsync(attentionTarget)}");
+        await Task.Delay(900);
+        _shell?.SetUnread(0, false);
+        Console.WriteLine("shell-probe-done=true");
+    }
+
+    /// <summary>读取 _NET_WM_STATE，确认紧急提示真的下发给了窗口管理器。</summary>
+    private static async Task<string> QueryWindowStateAsync(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+        {
+            return "no-handle";
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "xprop",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            startInfo.ArgumentList.Add("-id");
+            startInfo.ArgumentList.Add($"0x{handle:X}");
+            startInfo.ArgumentList.Add("_NET_WM_STATE");
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return "unavailable";
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync();
+            _ = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return output.Trim();
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return "unavailable";
+        }
+    }
+
+    private static async Task<string> QueryNotificationServerAsync()
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "gdbus",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var argument in new[] { "call", "--session", "--dest", "org.freedesktop.Notifications", "--object-path", "/org/freedesktop/Notifications", "--method", "org.freedesktop.Notifications.GetServerInformation" })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return "unavailable";
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync();
+            _ = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return process.ExitCode == 0 ? output.Trim() : "unavailable";
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return "unavailable";
         }
     }
 
@@ -822,6 +1070,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs args)
     {
+        _hotkey?.Dispose();
+        _hotkey = null;
+        _attention?.Dispose();
+        _attention = null;
+        _shell?.Dispose();
         if (!_shutdownComplete && !_viewModel.IsDisposed)
         {
             _ = ShutdownQuietlyAsync();

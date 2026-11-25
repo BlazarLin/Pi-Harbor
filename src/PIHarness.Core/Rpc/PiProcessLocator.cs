@@ -46,39 +46,135 @@ public static class PiProcessLocator
 
     private static PiLaunchResult FindOnUnix()
     {
-        // PATH 优先：用户安装位置可能随时变化，固定目录只作为 GUI 启动时 PATH 过短的兜底。
-        var pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        foreach (var pathEntry in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var candidate = Path.Combine(pathEntry.Trim('"'), "pi");
-            if (File.Exists(candidate))
-            {
-                return new PiLaunchResult(true, Path.GetFullPath(candidate), null);
-            }
-        }
-
+        // 固定安装目录优先：桌面启动时 PATH 往往只有系统目录，而 /usr/bin/pi 在
+        // Debian/Ubuntu 上是 GNU 的圆周率计算工具，同名但绝不是 Pi 编码代理。
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var fallbackDirectories = UnixFallbackDirectoryOverride ??
         [
+            Path.Combine(home, ".pi", "agent", "bin"),
             Path.Combine(home, ".npm-global", "bin"),
             Path.Combine(home, ".local", "bin"),
             Path.Combine(home, "node_modules", ".bin"),
-            Path.Combine(home, ".pi", "agent", "bin"),
             "/usr/local/bin",
             "/usr/bin",
         ];
 
+        var candidates = new List<string>();
         foreach (var directory in fallbackDirectories)
         {
-            var candidate = Path.Combine(directory, "pi");
-            if (File.Exists(candidate))
+            candidates.Add(Path.Combine(directory, "pi"));
+        }
+
+        var pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (var pathEntry in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            candidates.Add(Path.Combine(pathEntry.Trim('"'), "pi"));
+        }
+
+        var bSawForeignPi = false;
+        foreach (var candidate in candidates.Distinct(StringComparer.Ordinal))
+        {
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            // 同名命令不一定是 Pi 编码代理：必须能输出版本号才算命中。
+            if (IsPiAgentCommand(candidate))
             {
                 return new PiLaunchResult(true, Path.GetFullPath(candidate), null);
             }
+
+            bSawForeignPi = true;
         }
 
-        return new PiLaunchResult(false, null,
-            "未找到 pi 命令。请确认 pi 已通过 npm 全局安装（npm i -g @earendil-works/pi-coding-agent）并可在终端中运行，或将其所在目录加入 PATH。");
+        var message = bSawForeignPi
+            ? "找到的 pi 不是 Pi 编码代理（Ubuntu 的 /usr/bin/pi 是圆周率计算工具）。请确认 pi 已通过 npm 全局安装（npm i -g @earendil-works/pi-coding-agent）并可在终端中运行，或将其所在目录加入 PATH。"
+            : "未找到 pi 命令。请确认 pi 已通过 npm 全局安装（npm i -g @earendil-works/pi-coding-agent）并可在终端中运行，或将其所在目录加入 PATH。";
+        return new PiLaunchResult(false, null, message);
+    }
+
+    private static readonly Dictionary<string, (long Length, DateTime WriteTime, bool Valid)> ValidationCache = new(StringComparer.Ordinal);
+    private static readonly object ValidationLock = new();
+
+    /// <summary>执行 pi --version 判断是否为 Pi 编码代理；结果按文件路径/大小/修改时间缓存。</summary>
+    private static bool IsPiAgentCommand(string path)
+    {
+        FileInfo info;
+        try
+        {
+            info = new FileInfo(path);
+            if (!info.Exists)
+            {
+                return false;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        lock (ValidationLock)
+        {
+            if (ValidationCache.TryGetValue(path, out var cached) &&
+                cached.Length == info.Length && cached.WriteTime == info.LastWriteTimeUtc)
+            {
+                return cached.Valid;
+            }
+        }
+
+        var bValid = ProbePiVersion(path);
+        lock (ValidationLock)
+        {
+            ValidationCache[path] = (info.Length, info.LastWriteTimeUtc, bValid);
+        }
+
+        return bValid;
+    }
+
+    private static bool ProbePiVersion(string path)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                ArgumentList = { "--version" },
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = new UTF8Encoding(false),
+                StandardErrorEncoding = new UTF8Encoding(false),
+            });
+            if (process is null)
+            {
+                return false;
+            }
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                return false;
+            }
+
+            var output = stdoutTask.GetAwaiter().GetResult();
+            _ = stderrTask.GetAwaiter().GetResult();
+            if (process.ExitCode != 0)
+            {
+                return false;
+            }
+
+            // Pi 编码代理输出裸版本号（如 1.6.0）；GNU pi 输出 "pi (CLN 1.3.7)"。
+            var firstLine = output.Split('\n', 2, StringSplitOptions.TrimEntries)[0];
+            return Version.TryParse(firstLine, out _);
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            return false;
+        }
     }
 
     public static ProcessStartInfo CreateStartInfo(string piCommandPath, PiStartOptions options)

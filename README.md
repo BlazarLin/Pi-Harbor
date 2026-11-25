@@ -83,7 +83,17 @@ tar -xzf Pi-Harbor-linux-x64.tar.gz
 ./Pi-Harbor-linux-x64/install-linux.sh --dock   # --dock 同时加入 GNOME 快捷启动栏
 ```
 
-Linux 版暂不支持系统通知、任务栏角标与全局热键：完成提示通过侧栏未读和窗口标题呈现。`打开项目目录` 入口仍在 Windows 前端中，Linux 前端暂未提供。
+Linux 桌面集成（Avalonia 前端）：
+
+| 能力 | Linux 实现 |
+| --- | --- |
+| 系统通知 | `org.freedesktop.Notifications`（经 `notify-send`），点击通知打开对应会话；未安装 libnotify 时自动降级 |
+| Dock 角标 | Unity LauncherEntry（KDE 等桌面可用）；Ubuntu 24.04 的 dock 已不实现该接口，此时改用紧急提示 + 窗口标题中的未读数 |
+| 窗口提醒 | `_NET_WM_STATE_DEMANDS_ATTENTION`，对应 Windows 的 FlashWindowEx |
+| 全局热键 | `Ctrl+Alt+P` 显示/隐藏主窗口（X11；Wayland 原生会话自动降级） |
+| 打开项目目录 | 项目右键 → 在文件管理器中打开（`xdg-open`） |
+
+GNOME 的托盘图标需要 AppIndicator 扩展，当前版本未提供；关闭窗口即退出应用。
 
 ## 先准备 Pi
 

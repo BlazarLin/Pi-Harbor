@@ -1,6 +1,6 @@
-// Created: 2026-09-12
-// Purpose: Verify the Unix discovery/launch branch used by the cross-platform frontend,
-//          including PATH-based pi lookup and direct exec (no cmd.exe intermediary).
+// 创建时间：2026-09-12
+// 功能：验证跨平台前端使用的 Unix 发现/启动分支：PATH 查找、同名命令过滤与直接 exec。
+// 目的：保证 Ubuntu 桌面启动时不会把系统自带的 GNU pi 误当成 Pi 编码代理。
 
 using PIHarness.Core.Rpc;
 
@@ -12,6 +12,8 @@ internal static class UnixLaunchTests
     public static void UnixBranchFindsPiAndExecutesDirectly()
     {
         PiProcessLocator.ForceUnixMode = true;
+        // 清空固定候选目录，避免本机真实安装的 pi 抢先命中，使用例只验证 PATH 分支。
+        PiProcessLocator.UnixFallbackDirectoryOverride = [];
         try
         {
             var previousPath = Environment.GetEnvironmentVariable("PATH");
@@ -21,9 +23,10 @@ internal static class UnixLaunchTests
             var binDir = Path.Combine(directory.Path, "bin");
             Directory.CreateDirectory(binDir);
             var piCommand = Path.Combine(binDir, "pi");
-            File.WriteAllText(piCommand, "#!/bin/sh\nexit 0\n");
+            File.WriteAllText(piCommand, "#!/bin/sh\necho 1.9.0\nexit 0\n");
+            MakeExecutable(piCommand);
 
-            // Replace PATH entirely: the machine PATH may already expose a real pi.
+            // 替换 PATH 整个内容：机器上真实安装的 pi 不能影响本用例。
             Environment.SetEnvironmentVariable("PATH", binDir);
             try
             {
@@ -50,6 +53,7 @@ internal static class UnixLaunchTests
         }
         finally
         {
+            PiProcessLocator.UnixFallbackDirectoryOverride = null;
             PiProcessLocator.ForceUnixMode = false;
         }
     }
@@ -80,5 +84,62 @@ internal static class UnixLaunchTests
         {
             PiProcessLocator.ForceUnixMode = false;
         }
+    }
+
+    [TestCase("TEST-51C", "Unix 下跳过同名的 GNU pi 并选择真正的 Pi 编码代理")]
+    public static void UnixBranchSkipsForeignPiCommand()
+    {
+        PiProcessLocator.ForceUnixMode = true;
+        PiProcessLocator.UnixFallbackDirectoryOverride = [];
+        try
+        {
+            var previousPath = Environment.GetEnvironmentVariable("PATH");
+            using var directory = new TemporaryDirectory();
+            var foreignDir = Path.Combine(directory.Path, "usr-bin");
+            var agentDir = Path.Combine(directory.Path, "npm-bin");
+            Directory.CreateDirectory(foreignDir);
+            Directory.CreateDirectory(agentDir);
+            var foreignPi = Path.Combine(foreignDir, "pi");
+            var agentPi = Path.Combine(agentDir, "pi");
+            // 模拟 Debian/Ubuntu 自带的 GNU pi：同名但输出自有版本格式。
+            File.WriteAllText(foreignPi, "#!/bin/sh\necho 'pi (CLN 1.3.7)'\nexit 0\n");
+            File.WriteAllText(agentPi, "#!/bin/sh\necho 1.6.0\nexit 0\n");
+            MakeExecutable(foreignPi);
+            MakeExecutable(agentPi);
+
+            Environment.SetEnvironmentVariable("PATH", foreignDir + Path.PathSeparator + agentDir);
+            try
+            {
+                var located = PiProcessLocator.Find();
+                AssertEx.True(located.Found, "应跳过 GNU pi 后找到真正的 pi");
+                AssertEx.Equal(agentPi, located.PiCommandPath, "必须返回能输出版本号的 Pi 编码代理");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("PATH", foreignDir);
+                var onlyForeign = PiProcessLocator.Find();
+                AssertEx.False(onlyForeign.Found, "只有同名 GNU pi 时不得误判为已安装");
+                AssertEx.True(onlyForeign.ErrorMessage!.Contains("圆周率", StringComparison.Ordinal), "错误信息必须说明同名命令不是 Pi 编码代理");
+                Environment.SetEnvironmentVariable("PATH", previousPath);
+            }
+        }
+        finally
+        {
+            PiProcessLocator.UnixFallbackDirectoryOverride = null;
+            PiProcessLocator.ForceUnixMode = false;
+        }
+    }
+
+    /// <summary>Windows 下没有可执行位，跳过权限设置；Unix 下必须让脚本可执行。</summary>
+    private static void MakeExecutable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                                   UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                                   UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
     }
 }
